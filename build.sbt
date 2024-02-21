@@ -4,15 +4,14 @@ ThisBuild / scalaVersion     := "2.13.12"
 ThisBuild / version          := "0.1.0"
 ThisBuild / organization     := "com.github.victoryang00"
 
-val chiselVersion = "6.0.0"
+val chiselVersion = "3.6.0"
 
 lazy val root = (project in file("."))
   .settings(
     name := "SE-ALU",
     libraryDependencies ++= Seq(
-      "org.chipsalliance" %% "chisel" % chiselVersion,
+      "edu.berkeley.cs" %% "chisel3" % chiselVersion,
       "edu.berkeley.cs"  %% "chiseltest" % "0.5.0" % "test",
-      "org.scalatest" %% "scalatest" % "3.2.16" % "test",
     ),
     scalacOptions ++= Seq(
       "-language:reflectiveCalls",
@@ -21,5 +20,7 @@ lazy val root = (project in file("."))
       "-Xcheckinit",
       "-Ymacro-annotations",
     ),
-    addCompilerPlugin("org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full),
+    addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion cross CrossVersion.full),
   )
+
+libraryDependencies += "org.scalatestplus" %% "junit-4-13" % "3.2.15.0" % "test"

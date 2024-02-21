@@ -1,5 +1,0 @@
-package instruction
-
-class WriteBack {
-
-}

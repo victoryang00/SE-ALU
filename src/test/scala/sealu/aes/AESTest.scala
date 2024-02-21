@@ -1,4 +1,4 @@
-package aes
+package sealu.aes
 
 class AESTest {
 
