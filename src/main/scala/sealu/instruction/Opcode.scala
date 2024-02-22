@@ -10,23 +10,14 @@ object Instruction {
   def ENC: BitPat = BitPat("b10????")
 
   def ADD: BitPat = BitPat("b000000")
-
   def SUB: BitPat = BitPat("b000001")
-
   def MUL: BitPat = BitPat("b000010")
-
   def MULS: BitPat = BitPat("b000011")
-
   def LT: BitPat = BitPat("b000100")
-
   def LTS: BitPat = BitPat("b000101")
-
   def XOR: BitPat = BitPat("b000111")
-
   def OR: BitPat = BitPat("b001000")
-
   def AND: BitPat = BitPat("b001001")
-
   def CMOV: BitPat = BitPat("b01????")
 }
 
@@ -41,8 +32,8 @@ class Opcode extends Module {
 
     val output = Output(UInt(64.W))
   })
-  val data = io.inst(4, 0)
-  val op = io.inst(6, 5)
+  val data = io.inst(3, 0)
+  val op = io.inst(5, 4)
 
   when(io.valid) {
     when(op === 1.U) {

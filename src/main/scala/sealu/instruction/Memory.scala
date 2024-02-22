@@ -2,7 +2,7 @@ package sealu.instruction
 
 import chisel3._
 
-class Memory(init_mem: Vec[UInt],size:Int) extends Module {
+class Memory(init_mem: Seq[Int], size: Int) extends Module {
   val io = IO(new Bundle {
     val readAddr = Input(UInt(4.W)) // 4 bits for addressing 0 to 15 locations
     val writeAddr = Input(UInt(4.W))
@@ -12,7 +12,9 @@ class Memory(init_mem: Vec[UInt],size:Int) extends Module {
   })
 
   // Initialize the memory
-  val init_memory: Vec[UInt] = RegInit(init_mem)
+  val i = VecInit(init_mem.map(_.U(8.W)).toSeq)
+
+  val init_memory: Vec[UInt] = RegInit(i)
 
   // Simple memory read logic
   io.readData := init_memory(io.readAddr)
