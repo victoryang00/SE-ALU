@@ -7,36 +7,105 @@ import instruction._
 import chisel3.util.random._
 
 case class SEALUParams() {
-  val key: Seq[Int] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0xd6, 0xaa, 0x74, 0xfd, 0xd2, 0xaf, 0x72, 0xfa, 0xda, 0xa6, 0x78, 0xf1, 0xd6, 0xab, 0x76, 0xfe, 0xb6, 0x92, 0xcf, 0x0b, 0x64, 0x3d, 0xbd, 0xf1, 0xbe, 0x9b, 0xc5, 0x00, 0x68, 0x30, 0xb3, 0xfe, 0xb6, 0xff, 0x74, 0x4e, 0xd2, 0xc2, 0xc9, 0xbf, 0x6c, 0x59, 0x0c, 0xbf, 0x04, 0x69, 0xbf, 0x41, 0x47, 0xf7, 0xf7, 0xbc, 0x95, 0x35, 0x3e, 0x03, 0xf9, 0x6c, 0x32, 0xbc, 0xfd, 0x05, 0x8d, 0xfd, 0x3c, 0xaa, 0xa3, 0xe8, 0xa9, 0x9f, 0x9d, 0xeb, 0x50, 0xf3, 0xaf, 0x57, 0xad, 0xf6, 0x22, 0xaa, 0x5e, 0x39, 0x0f, 0x7d, 0xf7, 0xa6, 0x92, 0x96, 0xa7, 0x55, 0x3d, 0xc1, 0x0a, 0xa3, 0x1f, 0x6b, 0x14, 0xf9, 0x70, 0x1a, 0xe3, 0x5f, 0xe2, 0x8c, 0x44, 0x0a, 0xdf, 0x4d, 0x4e, 0xa9, 0xc0, 0x26, 0x47, 0x43, 0x87, 0x35, 0xa4, 0x1c, 0x65, 0xb9, 0xe0, 0x16, 0xba, 0xf4, 0xae, 0xbf, 0x7a, 0xd2, 0x54, 0x99, 0x32, 0xd1, 0xf0, 0x85, 0x57, 0x68, 0x10, 0x93, 0xed, 0x9c, 0xbe, 0x2c, 0x97, 0x4e, 0x13, 0x11, 0x1d, 0x7f, 0xe3, 0x94, 0x4a, 0x17, 0xf3, 0x07, 0xa7, 0x8b, 0x4d, 0x2b, 0x30, 0xc5)
-  val init_memory: Seq[Int] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f)
-  val size: Int = 16
-  val plain_text: Int = 0xdeadbeef
+  val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f)
+  val init_plain: Seq[BigInt] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f)
+  val mem_size: Int = 16
+  val count: Int = 100
 }
 
 class SEALUIO(size: Int) extends Bundle {
-  val io = new Bundle {
-    val input_data = Input(Vec(size, UInt(6.W)))
-    val input1_data = Input(Vec(size, UInt(4.W)))
-    val input2_data = Input(Vec(size, UInt(4.W)))
-    val inputcond_data = Input(Vec(size, UInt(4.W)))
+  val in = new Bundle {
+    val inst_data = Input(Vec(size, UInt(6.W)))
+    val input1_data = Input(Vec(size, UInt(64.W)))
+    val input2_data = Input(Vec(size, UInt(64.W)))
+    val inputcond_data = Input(Vec(size, UInt(64.W)))
+    val valid = Input(Vec(size, Bool()))
   }
   val output = new Bundle {
     val result = Output(UInt(128.W))
     val valid = Output(Bool())
-    val ready = Input(Bool())
     val counter = Output(UInt(8.W))
   }
 }
 
 class SEALU(p: SEALUParams) extends Module {
-  val io = IO(new SEALUIO(100))
-  val mem = Module(new Memory(p.init_memory, p.size))
-  val cnter = new Counter(100)
+  val io: SEALUIO = IO(new SEALUIO(p.count))
+  val counter = new Counter(p.count)
+  val ciphers = VecInit(p.init_cipher.map(_.U(128.W)))
+  val plaintexts = VecInit(p.init_plain.map(_.U(64.W)))
+  val dycrypt = Module(new Decode())
+  val encrypt = Module(new Encode())
 
-  val sealuop = Module(new Opcode())
+  dycrypt.io.input1 := 0.U
+  dycrypt.io.input2 := 0.U
+  dycrypt.io.cond := 0.U
+  dycrypt.io.valid := false.B
+  encrypt.io.input := 0.U
+  encrypt.io.valid := false.B
+  io.output.result := 0.U
+
+  when(io.in.valid(counter.value)) { // Only proceed if the current cycle's input is valid
+    // Accessing cycle-specific data using the counter
+    val inst = io.in.inst_data(counter.value)
+    val input1 = io.in.input1_data(counter.value)
+    val input2 = io.in.input2_data(counter.value)
+    val inputCond = io.in.inputcond_data(counter.value)
+
+    // Assume sealuop can perform operations based on inst, and inputs
+    val sealuop = Module(new Opcode()) // Define Opcode module with appropriate IO
+    val cond_found = Wire(Bool())
+    val op1_found = ciphers.contains(input1)
+    val op2_found = ciphers.contains(input2)
+    sealuop.io.inst := inst
+    if (sealuop.io.inst == Instruction.CMOV) {
+      cond_found := ciphers.contains(inputCond)
+    } else {
+      cond_found := true.B
+    }
+    val op1_idx = ciphers.indexWhere(ele => (ele === input1))
+    val op2_idx = ciphers.indexWhere(ele => (ele === input2))
+    val cond_idx = ciphers.indexWhere(ele => (ele === inputCond))
+    // AES dycryption
+    // big number operation
+    dycrypt.io.input1 := input1
+    dycrypt.io.input2 := input2
+    dycrypt.io.cond := inputCond
+    dycrypt.io.valid := io.in.valid(counter.value) && cond_found && op1_found && op2_found
+
+    sealuop.io.valid := io.in.valid(counter.value) && cond_found && op1_found && op2_found
+    sealuop.io.input_1 := plaintexts(op1_idx)
+    sealuop.io.input_2 := plaintexts(op2_idx)
+    sealuop.io.cond := plaintexts(cond_idx)
+
+    printf("\n")
+    printf("op1:%x\n", sealuop.io.input_1)
+    printf("op2:%x\n", sealuop.io.input_2)
+    printf("cond:%x\n", sealuop.io.cond)
+    printf("inst:%b\n", sealuop.io.inst)
+    // Read from custom memory based on input addresses
 
 
-  // cypher text initial value
-  val cypher_text = RegInit(0.U(8.W))
+    // AES encryption
+    // Example operation and storing the result back to memory
+    // This is where you would perform your encryption/decryption and store the result
+    // Assuming we get a result that we want to store in memory
+    val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
+    val padded_result = Cat(sealuop.io.output,bit64_randnum)
 
+    encrypt.io.input := padded_result
+    encrypt.io.valid := true.B
+    io.output.result := encrypt.io.output
+    counter.inc() // Increment the counter each cycle to move to the next set of inputs
+  }
+
+
+  when(reset.asBool) {
+    counter.reset()
+  }.otherwise {
+    when(counter.value === p.count.U - 1.U) {
+      printf("\n-----back----\n")
+    }
+  }
+  io.output.valid := true.B
+  io.output.counter := counter.value
 }

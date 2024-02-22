@@ -23,17 +23,17 @@ object Instruction {
 
 class Opcode extends Module {
   val io = IO(new Bundle {
-    val input_1 = Input(UInt(64.W))
-    val input_2 = Input(UInt(64.W))
-    val cond = Input(UInt(64.W))
+    val input_1: UInt = Input(UInt(64.W))
+    val input_2: UInt = Input(UInt(64.W))
+    val cond: UInt = Input(UInt(64.W))
 
-    val inst = Input(UInt(6.W))
-    val valid = Input(Bool())
+    val inst: UInt = Input(UInt(6.W))
+    val valid: Bool = Input(Bool())
 
-    val output = Output(UInt(64.W))
+    val output: UInt = Output(UInt(64.W))
   })
-  val data = io.inst(3, 0)
-  val op = io.inst(5, 4)
+  private val data = io.inst(3, 0)
+  private val op = io.inst(5, 4)
 
   when(io.valid) {
     when(op === 1.U) {
@@ -60,6 +60,24 @@ class Opcode extends Module {
       }.elsewhen(data === 3.U) {
         printf("Inst:muls\n")
         io.output := (io.input_1.asSInt * io.input_2.asSInt).asUInt
+      }.elsewhen(data === 4.U) {
+        printf("Inst:lt\n")
+        io.output := (io.input_1 < io.input_2).asUInt
+      }.elsewhen(data === 5.U) {
+        printf("Inst:lts\n")
+        io.output := (io.input_1.asSInt < io.input_2.asSInt).asUInt
+      }.elsewhen(data === 7.U) {
+        printf("Inst:xor\n")
+        io.output := io.input_1 ^ io.input_2
+      }.elsewhen(data === 8.U) {
+        printf("Inst:or\n")
+        io.output := io.input_1 | io.input_2
+      }.elsewhen(data === 9.U) {
+        printf("Inst:and\n")
+        io.output := io.input_1 & io.input_2
+      }.otherwise {
+        printf("Inst:unknown\n")
+        io.output := 0.U
       }
     }
   }.otherwise {
