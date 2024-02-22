@@ -11,32 +11,23 @@ class AES extends Module {
     val input = Input(UInt(64.W))
     val valid = Input(Bool())
     val key = Input(Vec(176, UInt(8.W)))
-
+    val is_enc = Input(Bool())
     val output = Output(UInt(64.W))
   })
 
-  val decode = Module(new Decode)
-  val encode = Module(new Encode)
   val sbox = Module(new SBox(AES.key))
   val aes_sbox = Module(new AESSBox)
   val shift_rows = Module(new ShiftRows(true))
   val mix_column = Module(new MixColumn64(true))
 
-  decode.io.input1 := io.input
-  decode.io.input2 := io.input
-  decode.io.cond := io.input
-  decode.io.valid := io.valid
 
-  sbox.io.in := decode.io.output_input1
   aes_sbox.io.in := sbox.io.out
+  aes_sbox.io.is_enc := io.is_enc
   shift_rows.io.in1 := aes_sbox.io.out
   shift_rows.io.in2 := aes_sbox.io.out
   mix_column.io.in := shift_rows.io.out
+  // can be used to encrypt or decrypt
 
-  encode.io.input := mix_column.io.out
-  encode.io.valid := io.valid
-
-  io.output := encode.io.output
 }
 
 class SBox(table: Seq[Int]) extends Module {

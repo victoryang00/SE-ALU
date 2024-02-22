@@ -65,7 +65,7 @@ class SEALU(p: SEALUParams) extends Module {
     val op1_idx = ciphers.indexWhere(ele => (ele === input1))
     val op2_idx = ciphers.indexWhere(ele => (ele === input2))
     val cond_idx = ciphers.indexWhere(ele => (ele === inputCond))
-    // AES dycryption
+    // AES dycryption takes 3 cycles, so we need to wait for the result?
     // big number operation
     dycrypt.io.input1 := input1
     dycrypt.io.input2 := input2

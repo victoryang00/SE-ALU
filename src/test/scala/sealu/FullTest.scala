@@ -24,7 +24,7 @@ class SEALUTester extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.output.counter.expect(100.U)
     }
   }
-// cmov a, b, c if b [a] = b, else c
+  // cmov a, b, c  a = b if b else c
   // add a, b, c
   // sub a, b, c
   it should "be able to cmov a bunch the default param" in {
