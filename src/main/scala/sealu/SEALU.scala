@@ -13,13 +13,13 @@ case class SEALUParams() {
   val count: Int = 100
 }
 
-class SEALUIO(size: Int) extends Bundle {
+class SEALUIO() extends Bundle {
   val in = new Bundle {
-    val inst_data = Input(Vec(size, UInt(6.W)))
-    val input1_data = Input(Vec(size, UInt(64.W)))
-    val input2_data = Input(Vec(size, UInt(64.W)))
-    val inputcond_data = Input(Vec(size, UInt(64.W)))
-    val valid = Input(Vec(size, Bool()))
+    val inst_data = Input(UInt(6.W))
+    val input1_data = Input(UInt(64.W))
+    val input2_data = Input(UInt(64.W))
+    val inputcond_data = Input(UInt(64.W))
+    val valid = Input(Bool())
   }
   val output = new Bundle {
     val result = Output(UInt(128.W))
@@ -29,7 +29,7 @@ class SEALUIO(size: Int) extends Bundle {
 }
 
 class SEALU(p: SEALUParams) extends Module {
-  val io: SEALUIO = IO(new SEALUIO(p.count))
+  val io: SEALUIO = IO(new SEALUIO())
   val counter = new Counter(p.count)
   val ciphers = VecInit(p.init_cipher.map(_.U(128.W)))
   val plaintexts = VecInit(p.init_plain.map(_.U(64.W)))
@@ -46,10 +46,10 @@ class SEALU(p: SEALUParams) extends Module {
 
   when(io.in.valid(counter.value)) { // Only proceed if the current cycle's input is valid
     // Accessing cycle-specific data using the counter
-    val inst = io.in.inst_data(counter.value)
-    val input1 = io.in.input1_data(counter.value)
-    val input2 = io.in.input2_data(counter.value)
-    val inputCond = io.in.inputcond_data(counter.value)
+    val inst = io.in.inst_data
+    val input1 = io.in.input1_data
+    val input2 = io.in.input2_data
+    val inputCond = io.in.inputcond_data
 
     // Assume sealuop can perform operations based on inst, and inputs
     val sealuop = Module(new Opcode()) // Define Opcode module with appropriate IO
@@ -70,9 +70,9 @@ class SEALU(p: SEALUParams) extends Module {
     dycrypt.io.input1 := input1
     dycrypt.io.input2 := input2
     dycrypt.io.cond := inputCond
-    dycrypt.io.valid := io.in.valid(counter.value) && cond_found && op1_found && op2_found
+    dycrypt.io.valid := io.in.valid && cond_found && op1_found && op2_found
 
-    sealuop.io.valid := io.in.valid(counter.value) && cond_found && op1_found && op2_found
+    sealuop.io.valid := io.in.valid && cond_found && op1_found && op2_found
     sealuop.io.input_1 := plaintexts(op1_idx)
     sealuop.io.input_2 := plaintexts(op2_idx)
     sealuop.io.cond := plaintexts(cond_idx)
@@ -90,7 +90,7 @@ class SEALU(p: SEALUParams) extends Module {
     // This is where you would perform your encryption/decryption and store the result
     // Assuming we get a result that we want to store in memory
     val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
-    val padded_result = Cat(sealuop.io.output,bit64_randnum)
+    val padded_result = Cat(sealuop.io.output, bit64_randnum)
 
     encrypt.io.input := padded_result
     encrypt.io.valid := true.B
