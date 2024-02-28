@@ -4,73 +4,6 @@ import chisel3.util._
 import chisel3._
 
 // refer to https://github.com/chipsalliance/rocket-chip/blob/38728ef3e57ee226caf444d95fd745935b639c4d/src/main/scala/zk/zkn.scala#L28
-trait ShiftType
-
-object LeftShift extends ShiftType
-
-object RightShift extends ShiftType
-
-object LeftRotate extends ShiftType
-
-object RightRotate extends ShiftType
-
-object barrel {
-
-  /** A Barrel Shifter implementation for Vec type.
-   *
-   * @param inputs           input signal to be shifted, should be a [[Vec]] type.
-   * @param shiftInput       input signal to indicate the shift number, encoded in UInt.
-   * @param shiftType        [[ShiftType]] to indicate the type of shifter.
-   * @param shiftGranularity how many bits will be resolved in each layer.
-   *                         For a smaller `shiftGranularity`, latency will be high, but area is smaller.
-   *                         For a large `shiftGranularity`, latency will be low, but area is higher.
-   */
-  def apply[T <: Data](inputs: Vec[T], shiftInput: UInt, shiftType: ShiftType, shiftGranularity: Int = 1): Vec[T] = {
-    val elementType: T = inputs.head.cloneType
-    val shiftInputBits = shiftInput.asBools.grouped(shiftGranularity).map { bits =>
-      // Ensure bits is a Seq[Bool] that can be directly converted
-      VecInit(bits.toSeq).asUInt
-    }.toSeq
-
-    shiftInputBits.zipWithIndex.foldLeft(inputs) { (prev, current) =>
-      val (shiftBits, layer) = current
-      val oneHotEncodedShiftBits = UIntToOH(shiftBits, width = log2Ceil(inputs.length)).asBools
-
-      Mux1H(oneHotEncodedShiftBits, Seq.tabulate(prev.length) { i =>
-        // Ensure the output of this block is a Vec[T]
-        val layerShift = (i * scala.math.pow(2, layer * shiftGranularity).toInt).min(prev.length - 1)
-        val shifted = shiftType match {
-          case LeftRotate =>
-            val (left, right) = prev.splitAt(layerShift)
-            right ++ left
-          case LeftShift =>
-            val fill = Seq.fill(layerShift)(0.U.asTypeOf(elementType))
-            (prev.drop(layerShift) ++ fill).take(prev.length)
-          case RightRotate =>
-            val (left, right) = prev.splitAt(prev.length - layerShift)
-            right ++ left
-          case RightShift =>
-            val fill = Seq.fill(layerShift)(0.U.asTypeOf(elementType))
-            (fill ++ prev.take(prev.length - layerShift)).take(prev.length)
-        }
-        VecInit(shifted)
-      })
-    }
-  }
-
-  def leftShift[T <: Data](inputs: Vec[T], shift: UInt, layerSize: Int = 1): Vec[T] =
-    apply(inputs, shift, LeftShift, layerSize)
-
-  def rightShift[T <: Data](inputs: Vec[T], shift: UInt, layerSize: Int = 1): Vec[T] =
-    apply(inputs, shift, RightShift, layerSize)
-
-  def leftRotate[T <: Data](inputs: Vec[T], shift: UInt, layerSize: Int = 1): Vec[T] =
-    apply(inputs, shift, LeftRotate, layerSize)
-
-  def rightRotate[T <: Data](inputs: Vec[T], shift: UInt, layerSize: Int = 1): Vec[T] =
-    apply(inputs, shift, RightRotate, layerSize)
-}
-
 object AES {
   val enc: Seq[Int] = Seq(
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -198,11 +131,11 @@ class DataBundleWithKeyIn extends DataBundle {
   val key_in = Input(Vec(16, UInt(8.W)))
 }
 
-class AES extends Module {
+class AESCore extends Module {
   val io = IO(new Bundle {
     val input = Input(UInt(128.W))
     val valid = Input(Bool())
-    val key = Input(Vec(128, UInt(8.W)))
+    val key = Input(Vec(16, UInt(8.W)))
     val is_enc = Input(Bool())
     val output = Output(UInt(128.W))
   })
@@ -220,32 +153,69 @@ class AES extends Module {
   keygen.io.key_in := io.key
   val key_schedule = keygen.io.key_schedule
   //Initial round
+  val data_out_top = Wire(UInt(128.W))
+  when(!io.is_enc) {
+    val stage0: AESCipherStage = Module(new AESCipherStage(false))
+    stage0.io.key_in := key_schedule(9)
+    stage0.io.data_in :=  VecInit((0 until 16).map(i => io.input(8*(i+1)-1, 8*i)))
+    val stage0_data_out = stage0.io.data_out
 
-  val stage0: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
-  stage0.io.key_in := key_schedule(9)
-  stage0.io.data_in := io.input
-  val stage0_data_out = stage0.io.data_out
+    //stages 1-8
+    val data_reg = Reg(Vec(16, UInt(8.W)))
 
-  //stages 1-8
-  val data_reg = Reg(Vec(16, UInt(8.W)))
+    val AESStage: AESCipherStage = Module(new AESCipherStage(false))
+    AESStage.io.data_in := data_reg
+    AESStage.io.key_in := key_schedule(counter - 1.U)
 
-  val AESStage: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
-  AESStage.io.data_in := data_reg
-  AESStage.io.key_in := key_schedule(counter - 1.U)
+    val data_next = AESStage.io.data_out
+    data_reg := Mux(mux_select_stage0, stage0_data_out, data_next)
 
-  val data_next = AESStage.io.data_out
-  data_reg := Mux(mux_select_stage0, stage0_data_out, data_next)
+    // output round
+    val stage9: AESCipherStage = Module(new AESCipherStage(false))
+    stage9.io.data_in := data_reg
+    stage9.io.key_in := key_schedule(0)
 
-  // output round
-  val stage9: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
-  stage9.io.data_in := data_reg
-  stage9.io.key_in := key_schedule(0)
+    val stage10 = Module(new AddRoundKey())
+    stage10.io.key_in := io.key.map(_.asTypeOf(UInt(8.W)))
+    stage10.io.data_in := stage9.io.data_out
 
-  val stage10 = Module(new AddRoundKey())
-  stage10.io.key_in := io.key.map(_.asTypeOf(UInt(8.W)))
-  stage10.io.data_in := stage9.io.data_out
+    data_out_top := stage10.io.data_out.asTypeOf(UInt(128.W))
+  }.otherwise {
+    val stage0_addRoundKey = Module(new AddRoundKey())
+    stage0_addRoundKey.io.key_in := io.key
+    stage0_addRoundKey.io.data_in :=  VecInit((0 until 16).map(i => io.input(8*(i+1)-1, 8*i)))
+    val stage0_data_out = stage0_addRoundKey.io.data_out
 
-  val data_out_top = stage10.io.data_out.asTypeOf(UInt(128.W))
+    // Round 1
+    val stage1_cipher = Module(new AESCipherStage(true))
+    stage1_cipher.io.data_in := stage0_data_out
+    stage1_cipher.io.key_in := key_schedule(0)
+    val stage1_data_out = stage1_cipher.io.data_out
+
+    //stages 2-9
+    val data_reg = Reg(Vec(16, UInt(8.W)))
+
+    val AESStage = Module(new AESCipherStage(true))
+    AESStage.io.data_in := data_reg
+    AESStage.io.key_in := key_schedule(10.U - counter)
+
+    val data_next = AESStage.io.data_out
+    data_reg := Mux(mux_select_stage0, stage1_data_out, data_next)
+
+    // stage 10
+    val sub_byte = Module(new SBox(AES.enc))
+    val shift_rows = Module(new ShiftRows(true))
+    val add_round_key = Module(new AddRoundKey())
+
+    add_round_key.io.key_in := key_schedule(9)
+
+    //Chain modules together
+    sub_byte.io.in := data_reg.asUInt
+    shift_rows.io.in := sub_byte.io.out
+    add_round_key.io.data_in :=  VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
+
+    data_out_top := RegEnable(add_round_key.io.data_out.asTypeOf(UInt(128.W)), running)
+  }
   io.output := data_out_top
 }
 
@@ -259,8 +229,8 @@ class AESCipherStage(enc: Boolean) extends Module {
 
   val add_round_key = Module(new AddRoundKey())
   val mix_columns = Module(new MixColumn128(enc))
-  val sub_byte = Module(new SBox(AES.enc))
-  val inv_sub_byte = Module(new SBox(AES.dec))
+  val sub_byte = Module(new SubByte(AES.enc))
+  val inv_sub_byte = Module(new SubByte(AES.dec))
   val shift_rows = Module(new ShiftRows(enc))
 
   add_round_key.io.key_in := io.key_in
@@ -268,16 +238,16 @@ class AESCipherStage(enc: Boolean) extends Module {
   //Chain modules together
   if (!enc) {
     add_round_key.io.data_in := io.data_in
-    mix_columns.io.in := add_round_key.io.data_out
+    mix_columns.io.in := add_round_key.io.data_out.asUInt
     shift_rows.io.in := mix_columns.io.out
-    inv_sub_byte.io.in := shift_rows.io.out
-    io.data_out := inv_sub_byte.io.out
+    inv_sub_byte.io.data_in :=   VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
+    io.data_out := inv_sub_byte.io.data_out
   } else {
-    sub_byte.io.in := io.data_in
-    shift_rows.io.in := sub_byte.io.out
+    sub_byte.io.data_in := io.data_in
+    shift_rows.io.in := sub_byte.io.data_out.asUInt
     mix_columns.io.in := shift_rows.io.out
-    add_round_key.io.data_in := mix_columns.io.out
-    io.data_out := add_round_key.io.data_out
+    add_round_key.io.data_in :=    VecInit((0 until 16).map(i => mix_columns.io.out(8*(i+1)-1, 8*i)))
+    io.data_out :=   add_round_key.io.data_out
   }
 }
 
@@ -286,6 +256,17 @@ class AddRoundKey extends Module {
 
   for (i <- 0 until 16) {
     io.data_out(i) := io.data_in(i) ^ io.key_in(i) //RoundKey
+  }
+}
+class SubByte(table: Seq[Int]) extends Module {
+  val io = IO(new DataBundle())
+  def subByte(in: UInt): UInt = {
+    val sbox = Module(new SBox(table))
+    sbox.io.in := in
+    sbox.io.out
+  }
+  for (i <- 0 until 16) {
+    io.data_out(i) := subByte(io.data_in(i))
   }
 }
 

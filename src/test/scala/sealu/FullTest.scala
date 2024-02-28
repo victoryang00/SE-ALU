@@ -33,15 +33,17 @@ class SEALUTester extends AnyFlatSpec with ChiselScalatestTester {
     test(new SEALU(p)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
       val plaintext:Seq[Byte] = p.init_plain.map(_.toByte)
       val encrypted = SimpleAES.encrypt(plaintext, aes.AES.enc.map(_.toByte))
+      val enc_data = VecInit(encrypted.map(_.U)).asUInt
       val decrypted = SimpleAES.decrypt(encrypted, aes.AES.dec.map(_.toByte))
+      val dec_data = VecInit(decrypted.map(_.U)).asUInt
       for (i <- 0 until 100) {
         dut.io.in.inst_data.poke("b000000".U)
-        dut.io.in.input1_data.poke(decrypted) // decrypted
-        dut.io.in.input2_data.poke(decrypted) // decrypted
+        dut.io.in.input1_data.poke(dec_data) // decrypted
+        dut.io.in.input2_data.poke(dec_data) // decrypted
         dut.io.in.inputcond_data.poke(0.U)
         dut.io.in.valid.poke(true.B)
         dut.clock.step()
-        dut.io.output.result.expect(encrypted) // encrypted
+        dut.io.output.result.expect(enc_data) // encrypted
         dut.io.output.valid.expect(false.B)
         dut.io.output.counter.expect(100.U)
       }
