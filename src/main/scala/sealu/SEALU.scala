@@ -18,9 +18,9 @@ case class SEALUParams() {
 class SEALUIO() extends Bundle {
   val in = new Bundle {
     val inst_data = Input(UInt(6.W))
-    val input1_data = Input(UInt(64.W))
-    val input2_data = Input(UInt(64.W))
-    val inputcond_data = Input(UInt(64.W))
+    val input1_data = Input(UInt(128.W))
+    val input2_data = Input(UInt(128.W))
+    val inputcond_data = Input(UInt(128.W))
     val valid = Input(Bool())
   }
   val output = new Bundle {

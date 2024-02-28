@@ -113,6 +113,91 @@ object AES {
   val rcon: Seq[Int] = Seq(0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36)
 }
 
+//Calculates the entire schedule
+class KeyScheduleBundle extends Bundle {
+  val key_in = Input(Vec(16, UInt(8.W)))
+  val key_schedule = Output(Vec(10, (Vec(16, UInt(8.W)))))
+}
+
+trait keyConnect {
+  def connectRCON(prev: RCON, next: RCON) = {
+    next.io.last_rcon := prev.io.next_rcon
+  }
+
+  def connectKeyStage(prev: KeyExpansion, next: KeyExpansion, rcon: RCON) = {
+    next.io.key_in := prev.io.key_out
+    next.io.rcon := rcon.io.next_rcon
+  }
+}
+
+class KeySchedule extends Module with keyConnect {
+  val io = IO(new KeyScheduleBundle())
+
+  val r2 = Module(new RCON())
+  val r3 = Module(new RCON())
+  val r4 = Module(new RCON())
+  val r5 = Module(new RCON())
+  val r6 = Module(new RCON())
+  val r7 = Module(new RCON())
+  val r8 = Module(new RCON())
+  val r9 = Module(new RCON())
+  val r10 = Module(new RCON())
+
+  r2.io.last_rcon := 1.U(8.W)
+  connectRCON(r2, r3)
+  connectRCON(r3, r4)
+  connectRCON(r4, r5)
+  connectRCON(r5, r6)
+  connectRCON(r6, r7)
+  connectRCON(r7, r8)
+  connectRCON(r8, r9)
+  connectRCON(r9, r10)
+
+  val k1 = Module(new KeyExpansion())
+  val k2 = Module(new KeyExpansion())
+  val k3 = Module(new KeyExpansion())
+  val k4 = Module(new KeyExpansion())
+  val k5 = Module(new KeyExpansion())
+  val k6 = Module(new KeyExpansion())
+  val k7 = Module(new KeyExpansion())
+  val k8 = Module(new KeyExpansion())
+  val k9 = Module(new KeyExpansion())
+  val k10 = Module(new KeyExpansion())
+
+  k1.io.rcon := 1.U(8.W)
+  k1.io.key_in := io.key_in
+
+  connectKeyStage(k1, k2, r2)
+  connectKeyStage(k2, k3, r3)
+  connectKeyStage(k3, k4, r4)
+  connectKeyStage(k4, k5, r5)
+  connectKeyStage(k5, k6, r6)
+  connectKeyStage(k6, k7, r7)
+  connectKeyStage(k7, k8, r8)
+  connectKeyStage(k8, k9, r9)
+  connectKeyStage(k9, k10, r10)
+
+  io.key_schedule(0) := k1.io.key_out
+  io.key_schedule(1) := k2.io.key_out
+  io.key_schedule(2) := k3.io.key_out
+  io.key_schedule(3) := k4.io.key_out
+  io.key_schedule(4) := k5.io.key_out
+  io.key_schedule(5) := k6.io.key_out
+  io.key_schedule(6) := k7.io.key_out
+  io.key_schedule(7) := k8.io.key_out
+  io.key_schedule(8) := k9.io.key_out
+  io.key_schedule(9) := k10.io.key_out
+}
+
+class DataBundle extends Bundle {
+  val data_in = Input(Vec(16, UInt(8.W)))
+  val data_out = Output(Vec(16, UInt(8.W)))
+}
+
+class DataBundleWithKeyIn extends DataBundle {
+  val key_in = Input(Vec(16, UInt(8.W)))
+}
+
 class AES extends Module {
   val io = IO(new Bundle {
     val input = Input(UInt(128.W))
@@ -122,54 +207,88 @@ class AES extends Module {
     val output = Output(UInt(128.W))
   })
   // 128bit
-  //State Machine ---------------------------------------
   val numStages = 10 //for AES128
 
   val start = io.valid
   val counter = RegInit(0.U(4.W))
   val running = counter > 0.U
 
-  counter := Mux(running, counter-1.U,
-    Mux(start, numStages.U, counter))
+  counter := Mux(running, counter - 1.U, Mux(start, numStages.U, counter))
 
   val mux_select_stage0 = counter === numStages.U
-
-  // Ready Valid
-  io.data_in.ready  := !running && io.valid
-  io.data_out.valid := !running && io.valid
-
-  //Computations -----------------------------------------
+  val keygen = Module(new KeySchedule)
+  keygen.io.key_in := io.key
+  val key_schedule = keygen.io.key_schedule
   //Initial round
-  val stage0 = Module(new InvAESCipherInitStage())
+
+  val stage0: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
   stage0.io.key_in := key_schedule(9)
-  stage0.io.data_in := data_in_top
+  stage0.io.data_in := io.input
   val stage0_data_out = stage0.io.data_out
 
   //stages 1-8
-  val data_reg    = Reg(Vec(16, UInt(8.W)))
+  val data_reg = Reg(Vec(16, UInt(8.W)))
 
-  val InvAESStage = Module(new InvAESCipherStage)
-  InvAESStage.io.data_in     := data_reg
-  InvAESStage.io.key_in      := key_schedule(counter - 1.U)
+  val AESStage: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
+  AESStage.io.data_in := data_reg
+  AESStage.io.key_in := key_schedule(counter - 1.U)
 
-  val data_next   = InvAESStage.io.data_out
-  data_reg    := Mux(mux_select_stage0, stage0_data_out, data_next)
+  val data_next = AESStage.io.data_out
+  data_reg := Mux(mux_select_stage0, stage0_data_out, data_next)
 
   // output round
-  val stage9 = Module( new InvAESCipherStage)
+  val stage9: AESCipherStage = Mux(io.is_enc, Module(new AESCipherStage(true)), Module(new AESCipherStage(false)))
   stage9.io.data_in := data_reg
   stage9.io.key_in := key_schedule(0)
 
   val stage10 = Module(new AddRoundKey())
-  stage10.io.key_in := key_in_top
+  stage10.io.key_in := io.key.map(_.asTypeOf(UInt(8.W)))
   stage10.io.data_in := stage9.io.data_out
-  val stage10_data_out = stage10.io.data_out
 
   val data_out_top = stage10.io.data_out.asTypeOf(UInt(128.W))
-  io.data_out.bits    := RegEnable(data_out_top, running)
-
-  //Debug
+  io.output := data_out_top
 }
+
+class AESCipherStage(enc: Boolean) extends Module {
+  val io = IO(new
+      Bundle {
+    val data_in = Input(Vec(16, UInt(8.W)))
+    val key_in = Input(Vec(16, UInt(8.W)))
+    val data_out = Output(Vec(16, UInt(8.W)))
+  })
+
+  val add_round_key = Module(new AddRoundKey())
+  val mix_columns = Module(new MixColumn128(enc))
+  val sub_byte = Module(new SBox(AES.enc))
+  val inv_sub_byte = Module(new SBox(AES.dec))
+  val shift_rows = Module(new ShiftRows(enc))
+
+  add_round_key.io.key_in := io.key_in
+
+  //Chain modules together
+  if (!enc) {
+    add_round_key.io.data_in := io.data_in
+    mix_columns.io.in := add_round_key.io.data_out
+    shift_rows.io.in := mix_columns.io.out
+    inv_sub_byte.io.in := shift_rows.io.out
+    io.data_out := inv_sub_byte.io.out
+  } else {
+    sub_byte.io.in := io.data_in
+    shift_rows.io.in := sub_byte.io.out
+    mix_columns.io.in := shift_rows.io.out
+    add_round_key.io.data_in := mix_columns.io.out
+    io.data_out := add_round_key.io.data_out
+  }
+}
+
+class AddRoundKey extends Module {
+  val io = IO(new DataBundleWithKeyIn())
+
+  for (i <- 0 until 16) {
+    io.data_out(i) := io.data_in(i) ^ io.key_in(i) //RoundKey
+  }
+}
+
 
 class SBox(table: Seq[Int]) extends Module {
   val io = IO(new Bundle {
@@ -218,20 +337,6 @@ class KeyExpansion extends Module {
   }
 }
 
-class AESSBox extends Module {
-  val io = IO(new Bundle {
-    val is_enc = Input(Bool())
-    val in = Input(UInt(8.W))
-    val out = Output(UInt(8.W))
-  })
-
-  val enc = Module(new SBox(AES.enc))
-  val dec = Module(new SBox(AES.dec))
-  enc.io.in := io.in
-  dec.io.in := io.in
-  io.out := Mux(io.is_enc,
-    enc.io.out, dec.io.out)
-}
 
 class GFMul(y: Int) extends Module {
   val io = IO(new Bundle {

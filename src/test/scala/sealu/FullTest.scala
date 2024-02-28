@@ -31,8 +31,9 @@ class SEALUTester extends AnyFlatSpec with ChiselScalatestTester {
   it should "be able to add a bunch the default param" in {
     val p = SEALUParams()
     test(new SEALU(p)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
-      val encrypted = SimpleAES.encrypt(plaintext, key)
-      val decrypted = SimpleAES.decrypt(encrypted, key)
+      val plaintext:Seq[Byte] = p.init_plain.map(_.toByte)
+      val encrypted = SimpleAES.encrypt(plaintext, aes.AES.enc.map(_.toByte))
+      val decrypted = SimpleAES.decrypt(encrypted, aes.AES.dec.map(_.toByte))
       for (i <- 0 until 100) {
         dut.io.in.inst_data.poke("b000000".U)
         dut.io.in.input1_data.poke(decrypted) // decrypted
@@ -44,17 +45,6 @@ class SEALUTester extends AnyFlatSpec with ChiselScalatestTester {
         dut.io.output.valid.expect(false.B)
         dut.io.output.counter.expect(100.U)
       }
-//      for (i <- 0 until 100) {
-//        dut.io.in.inst_data.poke(0.U)
-//        dut.io.in.input1_data.poke(1.U) // decrypted
-//        dut.io.in.input2_data.poke(1.U) // decrypted
-//        dut.io.in.inputcond_data.poke(0.U)
-//        dut.io.in.valid.poke(true.B)
-//        dut.clock.step()
-//        dut.io.output.result.expect(0.U) // encrypted
-//        dut.io.output.valid.expect(false.B)
-//        dut.io.output.counter.expect(100.U)
-//      }
 
     }
   }
