@@ -17,4 +17,8 @@ class Decode extends Module {
   io.output_input1 := io.input1
   io.output_input2 := io.input2
   io.output_cond := io.cond
+  // pad with 128 bits
+  when(io.valid) {
+    printf("Decode: input1:%x, input2:%x, cond:%x\n", io.input1, io.input2, io.cond)
+  }
 }
