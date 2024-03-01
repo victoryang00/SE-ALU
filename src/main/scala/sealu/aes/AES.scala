@@ -138,6 +138,7 @@ class AESCore extends Module {
     val key = Input(Vec(16, UInt(8.W)))
     val is_enc = Input(Bool())
     val output = Output(UInt(128.W))
+    val ready = Output(Bool())
   })
   // 128bit
   val numStages = 10 //for AES128
@@ -214,8 +215,9 @@ class AESCore extends Module {
     shift_rows.io.in := sub_byte.io.out
     add_round_key.io.data_in :=  VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
 
-    data_out_top := RegEnable(add_round_key.io.data_out.asTypeOf(UInt(128.W)), running)
+    data_out_top := add_round_key.io.data_out.asTypeOf(UInt(128.W))
   }
+  io.ready := true.B
   io.output := data_out_top
 }
 
@@ -229,20 +231,22 @@ class AESCipherStage(enc: Boolean) extends Module {
 
   val add_round_key = Module(new AddRoundKey())
   val mix_columns = Module(new MixColumn128(enc))
-  val sub_byte = Module(new SubByte(AES.enc))
-  val inv_sub_byte = Module(new SubByte(AES.dec))
   val shift_rows = Module(new ShiftRows(enc))
 
   add_round_key.io.key_in := io.key_in
 
   //Chain modules together
   if (!enc) {
+    val inv_sub_byte = Module(new SubByte(AES.dec))
+
     add_round_key.io.data_in := io.data_in
     mix_columns.io.in := add_round_key.io.data_out.asUInt
     shift_rows.io.in := mix_columns.io.out
     inv_sub_byte.io.data_in :=   VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
     io.data_out := inv_sub_byte.io.data_out
   } else {
+    val sub_byte = Module(new SubByte(AES.enc))
+
     sub_byte.io.data_in := io.data_in
     shift_rows.io.in := sub_byte.io.data_out.asUInt
     mix_columns.io.in := shift_rows.io.out
