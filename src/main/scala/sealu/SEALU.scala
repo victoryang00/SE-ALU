@@ -3,6 +3,7 @@ package sealu
 import chisel3._
 import chisel3.util._
 import aes._
+import chisel3.DontCare.:=
 import instruction._
 import chisel3.util.random._
 
@@ -10,8 +11,7 @@ trait Instruction;
 
 case class SEALUParams() {
   val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f)
-  val init_plain: Seq[BigInt] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f)
-  val mem_size: Int = 16
+  val init_plain: Seq[Int] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f)
   val count: Int = 100
 }
 
@@ -21,18 +21,21 @@ class SEALUIO() extends Bundle {
     val input1_data = Input(UInt(128.W))
     val input2_data = Input(UInt(128.W))
     val inputcond_data = Input(UInt(128.W))
+    val cache_valid = Input(Vec(128, Bool()))
     val valid = Input(Bool())
   }
   val output = new Bundle {
     val result = Output(UInt(128.W))
     val valid = Output(Bool())
+    val output_cache_data =SyncReadMem(128, UInt(128.W))
+    val output_cache_valid = Output(Vec(128, Bool()))
     val counter = Output(UInt(8.W))
   }
 }
 
 class SEALU(p: SEALUParams) extends Module {
   val io: SEALUIO = IO(new SEALUIO())
-  val counter = new Counter(p.count)
+  val counter = new Counter(p.count) // 10 instructions
   val ciphers = VecInit(p.init_cipher.map(_.U(128.W)))
   val plaintexts = VecInit(p.init_plain.map(_.U(64.W)))
   val dycrypt = Module(new Decode())
@@ -85,19 +88,23 @@ class SEALU(p: SEALUParams) extends Module {
     printf("cond:%x\n", sealuop.io.cond)
     printf("inst:%b\n", sealuop.io.inst)
     // Read from custom memory based on input addresses
+    when (!dycrypt.io.ready) {
+      printf("waiting for dycrypt\n")
+      // AES encryption
+      // Example operation and storing the result back to memory
+      // This is where you would perform your encryption/decryption and store the result
+      // Assuming we get a result that we want to store in memory
+      val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
+      val padded_result = Cat(sealuop.io.output, bit64_randnum)
 
-
-    // AES encryption
-    // Example operation and storing the result back to memory
-    // This is where you would perform your encryption/decryption and store the result
-    // Assuming we get a result that we want to store in memory
-    val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
-    val padded_result = Cat(sealuop.io.output, bit64_randnum)
-
-    encrypt.io.input := padded_result
-    encrypt.io.valid := true.B
-    io.output.result := encrypt.io.output
-    counter.inc() // Increment the counter each cycle to move to the next set of inputs
+      encrypt.io.input := padded_result
+      encrypt.io.valid := true.B
+      io.output.result := encrypt.io.output
+      when(!encrypt.io.ready) {
+        printf("waiting for encrypt\n")
+      }
+      counter.inc() // Increment the counter each cycle to move to the next set of inputs
+    }
   }
 
 
@@ -110,4 +117,6 @@ class SEALU(p: SEALUParams) extends Module {
   }
   io.output.valid := true.B
   io.output.counter := counter.value
+  io.output.output_cache_data.write(counter.value, io.output.result)
+  io.output.output_cache_valid := io.in.cache_valid
 }

@@ -19,6 +19,7 @@ object Instruction {
   def OR: BitPat = BitPat("b001000")
   def AND: BitPat = BitPat("b001001")
   def CMOV: BitPat = BitPat("b01????")
+  // if want add more streaming instructions
 }
 
 class Opcode extends Module {

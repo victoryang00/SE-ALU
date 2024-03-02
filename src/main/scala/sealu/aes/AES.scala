@@ -49,7 +49,7 @@ object AES {
 //Calculates the entire schedule
 class KeyScheduleBundle extends Bundle {
   val key_in = Input(Vec(16, UInt(8.W)))
-  val key_schedule = Output(Vec(10, (Vec(16, UInt(8.W)))))
+  val key_schedule = Output(Vec(10, Vec(16, UInt(8.W))))
 }
 
 trait keyConnect {
@@ -127,6 +127,33 @@ class DataBundle extends Bundle {
   val data_out = Output(Vec(16, UInt(8.W)))
 }
 
+class AESCipherExtraStage(enc:Boolean) extends Module {
+  val io = IO(new DataBundleWithKeyIn())
+
+  val shift_rows = Module(new ShiftRows(enc))
+  val add_round_key = Module(new AddRoundKey())
+
+  if (enc) {
+    val sub_byte = Module(new SubByte(AES.enc))
+    add_round_key.io.key_in := io.key_in
+
+    //Chain modules together
+    sub_byte.io.data_in := io.data_in
+    shift_rows.io.data_in := sub_byte.io.data_out
+    add_round_key.io.data_in := shift_rows.io.data_out
+    io.data_out := add_round_key.io.data_out
+  }else{
+    val inv_sub_byte = Module(new SubByte(AES.dec))
+    add_round_key.io.key_in := io.key_in
+
+    //Chain modules together
+    add_round_key.io.data_in := io.data_in
+    shift_rows.io.data_in := add_round_key.io.data_out
+    inv_sub_byte.io.data_in := shift_rows.io.data_out
+    io.data_out := inv_sub_byte.io.data_out
+  }
+}
+
 class DataBundleWithKeyIn extends DataBundle {
   val key_in = Input(Vec(16, UInt(8.W)))
 }
@@ -136,55 +163,44 @@ class AESCore extends Module {
     val input = Input(UInt(128.W))
     val valid = Input(Bool())
     val key = Input(Vec(16, UInt(8.W)))
+    val key_schedule = Input(Vec(10, Vec(16, UInt(8.W))))
+    val key_valid = Input(Bool())
     val is_enc = Input(Bool())
     val output = Output(UInt(128.W))
     val ready = Output(Bool())
   })
-  // 128bit
+  val key_schedule = io.key_schedule
+  val data_in_top = io.input.asTypeOf(Vec(16, UInt(8.W)))
+  val key_in_top = io.key
+  //State Machine ---------------------------------------
   val numStages = 10 //for AES128
 
-  val start = io.valid
+  val start = io.valid && io.key_valid
   val counter = RegInit(0.U(4.W))
-  val running = counter > 0.U
+  val running = counter > 1.U
 
-  counter := Mux(running, counter - 1.U, Mux(start, numStages.U, counter))
+  counter := Mux(running, counter - 1.U,
+    Mux(start, numStages.U, counter))
 
-  val mux_select_stage0 = counter === numStages.U
-  val keygen = Module(new KeySchedule)
-  keygen.io.key_in := io.key
-  val key_schedule = keygen.io.key_schedule
+  val mux_select_stage = counter === numStages.U
+//  when(io.key_valid) {
+//    printf("key_schedule: 0 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(0)(0), key_schedule(0)(1), key_schedule(0)(2), key_schedule(0)(3), key_schedule(0)(4), key_schedule(0)(5), key_schedule(0)(6), key_schedule(0)(7), key_schedule(0)(8), key_schedule(0)(9), key_schedule(0)(10), key_schedule(0)(11), key_schedule(0)(12), key_schedule(0)(13), key_schedule(0)(14), key_schedule(0)(15))
+//    printf("key_schedule: 1 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(1)(0), key_schedule(1)(1), key_schedule(1)(2), key_schedule(1)(3), key_schedule(1)(4), key_schedule(1)(5), key_schedule(1)(6), key_schedule(1)(7), key_schedule(1)(8), key_schedule(1)(9), key_schedule(1)(10), key_schedule(1)(11), key_schedule(1)(12), key_schedule(1)(13), key_schedule(1)(14), key_schedule(1)(15))
+//    printf("key_schedule: 2 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(2)(0), key_schedule(2)(1), key_schedule(2)(2), key_schedule(2)(3), key_schedule(2)(4), key_schedule(2)(5), key_schedule(2)(6), key_schedule(2)(7), key_schedule(2)(8), key_schedule(2)(9), key_schedule(2)(10), key_schedule(2)(11), key_schedule(2)(12), key_schedule(2)(13), key_schedule(2)(14), key_schedule(2)(15))
+//    printf("key_schedule: 3 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(3)(0), key_schedule(3)(1), key_schedule(3)(2), key_schedule(3)(3), key_schedule(3)(4), key_schedule(3)(5), key_schedule(3)(6), key_schedule(3)(7), key_schedule(3)(8), key_schedule(3)(9), key_schedule(3)(10), key_schedule(3)(11), key_schedule(3)(12), key_schedule(3)(13), key_schedule(3)(14), key_schedule(3)(15))
+//    printf("key_schedule: 4 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(4)(0), key_schedule(4)(1), key_schedule(4)(2), key_schedule(4)(3), key_schedule(4)(4), key_schedule(4)(5), key_schedule(4)(6), key_schedule(4)(7), key_schedule(4)(8), key_schedule(4)(9), key_schedule(4)(10), key_schedule(4)(11), key_schedule(4)(12), key_schedule(4)(13), key_schedule(4)(14), key_schedule(4)(15))
+//    printf("key_schedule: 5 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(5)(0), key_schedule(5)(1), key_schedule(5)(2), key_schedule(5)(3), key_schedule(5)(4), key_schedule(5)(5), key_schedule(5)(6), key_schedule(5)(7), key_schedule(5)(8), key_schedule(5)(9), key_schedule(5)(10), key_schedule(5)(11), key_schedule(5)(12), key_schedule(5)(13), key_schedule(5)(14), key_schedule(5)(15))
+//    printf("key_schedule: 6 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(6)(0), key_schedule(6)(1), key_schedule(6)(2), key_schedule(6)(3), key_schedule(6)(4), key_schedule(6)(5), key_schedule(6)(6), key_schedule(6)(7), key_schedule(6)(8), key_schedule(6)(9), key_schedule(6)(10), key_schedule(6)(11), key_schedule(6)(12), key_schedule(6)(13), key_schedule(6)(14), key_schedule(6)(15))
+//    printf("key_schedule: 7 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(7)(0), key_schedule(7)(1), key_schedule(7)(2), key_schedule(7)(3), key_schedule(7)(4), key_schedule(7)(5), key_schedule(7)(6), key_schedule(7)(7), key_schedule(7)(8), key_schedule(7)(9), key_schedule(7)(10), key_schedule(7)(11), key_schedule(7)(12), key_schedule(7)(13), key_schedule(7)(14), key_schedule(7)(15))
+//    printf("key_schedule: 8 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(8)(0), key_schedule(8)(1), key_schedule(8)(2), key_schedule(8)(3), key_schedule(8)(4), key_schedule(8)(5), key_schedule(8)(6), key_schedule(8)(7), key_schedule(8)(8), key_schedule(8)(9), key_schedule(8)(10), key_schedule(8)(11), key_schedule(8)(12), key_schedule(8)(13), key_schedule(8)(14), key_schedule(8)(15))
+//    printf("key_schedule: 9 VecInit(0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W), 0x%x.U(8.W)),\n", key_schedule(9)(0), key_schedule(9)(1), key_schedule(9)(2), key_schedule(9)(3), key_schedule(9)(4), key_schedule(9)(5), key_schedule(9)(6), key_schedule(9)(7), key_schedule(9)(8), key_schedule(9)(9), key_schedule(9)(10), key_schedule(9)(11), key_schedule(9)(12), key_schedule(9)(13), key_schedule(9)(14), key_schedule(9)(15))
+//  }
+  //Computations -----------------------------------------
   //Initial round
-  val data_out_top = Wire(UInt(128.W))
-  when(!io.is_enc) {
-    val stage0: AESCipherStage = Module(new AESCipherStage(false))
-    stage0.io.key_in := key_schedule(9)
-    stage0.io.data_in :=  VecInit((0 until 16).map(i => io.input(8*(i+1)-1, 8*i)))
-    val stage0_data_out = stage0.io.data_out
-
-    //stages 1-8
-    val data_reg = Reg(Vec(16, UInt(8.W)))
-
-    val AESStage: AESCipherStage = Module(new AESCipherStage(false))
-    AESStage.io.data_in := data_reg
-    AESStage.io.key_in := key_schedule(counter - 1.U)
-
-    val data_next = AESStage.io.data_out
-    data_reg := Mux(mux_select_stage0, stage0_data_out, data_next)
-
-    // output round
-    val stage9: AESCipherStage = Module(new AESCipherStage(false))
-    stage9.io.data_in := data_reg
-    stage9.io.key_in := key_schedule(0)
-
-    val stage10 = Module(new AddRoundKey())
-    stage10.io.key_in := io.key.map(_.asTypeOf(UInt(8.W)))
-    stage10.io.data_in := stage9.io.data_out
-
-    data_out_top := stage10.io.data_out.asTypeOf(UInt(128.W))
-  }.otherwise {
+  when(io.is_enc) {
     val stage0_addRoundKey = Module(new AddRoundKey())
-    stage0_addRoundKey.io.key_in := io.key
-    stage0_addRoundKey.io.data_in :=  VecInit((0 until 16).map(i => io.input(8*(i+1)-1, 8*i)))
+    stage0_addRoundKey.io.key_in := key_in_top
+    stage0_addRoundKey.io.data_in := data_in_top
     val stage0_data_out = stage0_addRoundKey.io.data_out
 
     // Round 1
@@ -192,6 +208,7 @@ class AESCore extends Module {
     stage1_cipher.io.data_in := stage0_data_out
     stage1_cipher.io.key_in := key_schedule(0)
     val stage1_data_out = stage1_cipher.io.data_out
+    //  printf("stage1_key: %x\n",stage1_data_out.asUInt)
 
     //stages 2-9
     val data_reg = Reg(Vec(16, UInt(8.W)))
@@ -201,26 +218,49 @@ class AESCore extends Module {
     AESStage.io.key_in := key_schedule(10.U - counter)
 
     val data_next = AESStage.io.data_out
-    data_reg := Mux(mux_select_stage0, stage1_data_out, data_next)
+    data_reg := Mux(mux_select_stage, stage1_data_out, data_next)
 
-    // stage 10
-    val sub_byte = Module(new SBox(AES.enc))
-    val shift_rows = Module(new ShiftRows(true))
-    val add_round_key = Module(new AddRoundKey())
+    // output round
+    val stage10 = Module(new AESCipherExtraStage(true))
+    stage10.io.data_in := data_reg
+    stage10.io.key_in := key_schedule(9)
+    //  printf("data_reg:  %x",data_reg.asUInt)
+    io.output := stage10.io.data_out.asTypeOf(UInt(128.W))
+    //  printf("data_out: %x",data_out_top)
+    io.ready := !running
+  }.otherwise{
+    val stage0 = Module(new AESCipherExtraStage(false))
+    stage0.io.key_in := key_schedule(9)
+    stage0.io.data_in := data_in_top
+    val stage0_data_out = stage0.io.data_out
 
-    add_round_key.io.key_in := key_schedule(9)
+    //stages 1-8
+    val data_reg    = Reg(Vec(16, UInt(8.W)))
 
-    //Chain modules together
-    sub_byte.io.in := data_reg.asUInt
-    shift_rows.io.in := sub_byte.io.out
-    add_round_key.io.data_in :=  VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
+    val InvAESStage = Module(new AESCipherStage(false))
+    InvAESStage.io.data_in     := data_reg
+    InvAESStage.io.key_in      := key_schedule(counter - 1.U)
 
-    data_out_top := add_round_key.io.data_out.asTypeOf(UInt(128.W))
+    val data_next   = InvAESStage.io.data_out
+    data_reg    := Mux(mux_select_stage, stage0_data_out, data_next)
+
+    // output round
+    val stage9 = Module( new AESCipherStage(false))
+    stage9.io.data_in := data_reg
+    stage9.io.key_in := key_schedule(0)
+
+    val stage10 = Module(new AddRoundKey())
+    stage10.io.key_in := key_in_top
+    stage10.io.data_in := stage9.io.data_out
+    val stage10_data_out = stage10.io.data_out
+//      printf("data_reg:  %x",data_reg.asUInt)
+
+    io.output := stage10.io.data_out.asTypeOf(UInt(128.W))
+//      printf("data_out: %x",io.output)
+
+    io.ready := !running
   }
-  io.ready := true.B
-  io.output := data_out_top
 }
-
 class AESCipherStage(enc: Boolean) extends Module {
   val io = IO(new
       Bundle {
@@ -240,18 +280,18 @@ class AESCipherStage(enc: Boolean) extends Module {
     val inv_sub_byte = Module(new SubByte(AES.dec))
 
     add_round_key.io.data_in := io.data_in
-    mix_columns.io.in := add_round_key.io.data_out.asUInt
-    shift_rows.io.in := mix_columns.io.out
-    inv_sub_byte.io.data_in :=   VecInit((0 until 16).map(i => shift_rows.io.out(8*(i+1)-1, 8*i)))
+    mix_columns.io.data_in := add_round_key.io.data_out
+    shift_rows.io.data_in := mix_columns.io.data_out
+    inv_sub_byte.io.data_in := shift_rows.io.data_out
     io.data_out := inv_sub_byte.io.data_out
   } else {
     val sub_byte = Module(new SubByte(AES.enc))
 
     sub_byte.io.data_in := io.data_in
-    shift_rows.io.in := sub_byte.io.data_out.asUInt
-    mix_columns.io.in := shift_rows.io.out
-    add_round_key.io.data_in :=    VecInit((0 until 16).map(i => mix_columns.io.out(8*(i+1)-1, 8*i)))
-    io.data_out :=   add_round_key.io.data_out
+    shift_rows.io.data_in := sub_byte.io.data_out
+    mix_columns.io.data_in := shift_rows.io.data_out
+    add_round_key.io.data_in := mix_columns.io.data_out
+    io.data_out := add_round_key.io.data_out
   }
 }
 
@@ -262,13 +302,16 @@ class AddRoundKey extends Module {
     io.data_out(i) := io.data_in(i) ^ io.key_in(i) //RoundKey
   }
 }
+
 class SubByte(table: Seq[Int]) extends Module {
   val io = IO(new DataBundle())
+
   def subByte(in: UInt): UInt = {
     val sbox = Module(new SBox(table))
     sbox.io.in := in
     sbox.io.out
   }
+
   for (i <- 0 until 16) {
     io.data_out(i) := subByte(io.data_in(i))
   }
@@ -323,113 +366,128 @@ class KeyExpansion extends Module {
 }
 
 
-class GFMul(y: Int) extends Module {
-  val io = IO(new Bundle {
-    val in: UInt = Input(UInt(8.W))
-    val out: UInt = Output(UInt(8.W))
-  })
-
-  // x*f(x) = 2*in in GF
-  def xt(in: UInt): UInt = (in << 1)(7, 0) ^ Mux(in(7), 0x1b.U(8.W), 0x00.U(8.W))
-
-  // 4*in in GF
-  def xt2(in: UInt): UInt = xt(xt(in))
-
-  // 8*in in GF
-  def xt3(in: UInt): UInt = xt(xt2(in))
-
-  require(y != 0)
-  io.out := VecInit(
-    (if ((y & 0x1) != 0) Seq((io.in)) else Nil) ++
-      (if ((y & 0x2) != 0) Seq(xt(io.in)) else Nil) ++
-      (if ((y & 0x4) != 0) Seq(xt2(io.in)) else Nil) ++
-      (if ((y & 0x8) != 0) Seq(xt3(io.in)) else Nil)
-  ).reduce(_ ^ _)
-}
-
-// shift 16 bytes
+//shuffle the 16-bit array
 class ShiftRows(enc: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in: UInt = Input(UInt(128.W))
-    val out: UInt = Output(UInt(128.W))
-  })
+  val io = IO(new DataBundle())
+  if (enc) {
+    io.data_out(0) := io.data_in(0)
+    io.data_out(1) := io.data_in(5)
+    io.data_out(2) := io.data_in(10)
+    io.data_out(3) := io.data_in(15)
 
-  private val shifts = if (enc) Seq(0, 1, 2, 3) else Seq(0, 3, 2, 1)
+    io.data_out(4) := io.data_in(4)
+    io.data_out(5) := io.data_in(9)
+    io.data_out(6) := io.data_in(14)
+    io.data_out(7) := io.data_in(3)
 
-  def asBytes(in: UInt): Vec[UInt] = VecInit(in.asBools.grouped(8).map(VecInit(_).asUInt).toSeq)
+    io.data_out(8) := io.data_in(8)
+    io.data_out(9) := io.data_in(13)
+    io.data_out(10) := io.data_in(2)
+    io.data_out(11) := io.data_in(7)
 
-  private val in_bytes = asBytes(io.in)
-  private val out_bytes = Wire(Vec(16, UInt(8.W)))
-  for (row <- 0 until 4) {
-    for (col <- 0 until 4) {
-      val inIndex = (row * 4 + col) % 16
-      val outIndex = (row * 4 + ((col + shifts(row)) % 4)) % 16
-      out_bytes(outIndex) := in_bytes(inIndex)
-    }
+    io.data_out(12) := io.data_in(12)
+    io.data_out(13) := io.data_in(1)
+    io.data_out(14) := io.data_in(6)
+    io.data_out(15) := io.data_in(11)
+  } else {
+    io.data_out(0) := io.data_in(0)
+    io.data_out(5) := io.data_in(1)
+    io.data_out(10) := io.data_in(2)
+    io.data_out(15) := io.data_in(3)
+
+    io.data_out(4) := io.data_in(4)
+    io.data_out(9) := io.data_in(5)
+    io.data_out(14) := io.data_in(6)
+    io.data_out(3) := io.data_in(7)
+
+    io.data_out(8) := io.data_in(8)
+    io.data_out(13) := io.data_in(9)
+    io.data_out(2) := io.data_in(10)
+    io.data_out(7) := io.data_in(11)
+
+    io.data_out(12) := io.data_in(12)
+    io.data_out(1) := io.data_in(13)
+    io.data_out(6) := io.data_in(14)
+    io.data_out(11) := io.data_in(15)
   }
-  io.out := out_bytes.asUInt
 }
 
-class MixColumn8(enc: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(UInt(8.W))
-    val out = Output(UInt(32.W))
-  })
+class MMDataBundle extends Bundle {
+  val data_in = Input(Vec(4, UInt(8.W)))
+  val data_out = Output(Vec(4, UInt(8.W)))
+}
 
-  def m(x: UInt, y: Int): UInt = {
-    val m = Module(new GFMul(y))
-    m.io.in := x
-    m.io.out
+trait MixColumnsFunctions {
+  def gmul2(a: UInt): UInt = {
+    Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ 0x1b.U(8.W), a << 1)
   }
 
-  private val out = if (enc) Cat(m(io.in, 3), io.in, io.in, m(io.in, 2))
-  else Cat(m(io.in, 0xb), m(io.in, 0xd), m(io.in, 9), m(io.in, 0xe))
-  io.out := out
+  def gmul3(a: UInt): UInt = {
+    Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ a ^ 0x1b.U(8.W), (a << 1) ^ a)
+  }
+
+  def gmul4(a: UInt): UInt = {
+    gmul2(gmul2(a))
+  }
+
+  def gmul8(a: UInt): UInt = {
+    gmul2(gmul2(gmul2(a)))
+  }
+
+  def gmul9(a: UInt): UInt = {
+    a ^ gmul8(a)
+  }
+
+  def gmul11(a: UInt): UInt = {
+    a ^ gmul2(a) ^ gmul8(a)
+  }
+
+  def gmul13(a: UInt): UInt = {
+    a ^ gmul4(a) ^ gmul8(a)
+  }
+
+  def gmul14(a: UInt): UInt = {
+    gmul2(a) ^ gmul4(a) ^ gmul8(a)
+  }
 }
 
-class MixColumn32(enc: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(UInt(32.W))
-    val out = Output(UInt(32.W))
-  })
-
-  def asBytes(in: UInt): Vec[UInt] = VecInit(in.asBools.grouped(8).map(VecInit(_).asUInt).toSeq)
-
-  io.out := asBytes(io.in).zipWithIndex.map({
-    case (b, i) => {
-      val m = Module(new MixColumn8(enc))
-      m.io.in := b
-      m.io.out.rotateLeft(i * 8)
-    }
-  }).reduce(_ ^ _)
+class MixColumnsMM(enc: Boolean) extends Module with MixColumnsFunctions {
+  val io = IO(new MMDataBundle())
+  if (enc) {
+    io.data_out(0) := gmul2(io.data_in(0)) ^ gmul3(io.data_in(1)) ^ io.data_in(2) ^ io.data_in(3)
+    io.data_out(1) := io.data_in(0) ^ gmul2(io.data_in(1)) ^ gmul3(io.data_in(2)) ^ io.data_in(3)
+    io.data_out(2) := io.data_in(0) ^ io.data_in(1) ^ gmul2(io.data_in(2)) ^ gmul3(io.data_in(3))
+    io.data_out(3) := gmul3(io.data_in(0)) ^ io.data_in(1) ^ io.data_in(2) ^ gmul2(io.data_in(3))
+  } else {
+    io.data_out(0) := gmul14(io.data_in(0)) ^ gmul11(io.data_in(1)) ^ gmul13(io.data_in(2)) ^ gmul9(io.data_in(3))
+    io.data_out(1) := gmul9(io.data_in(0)) ^ gmul14(io.data_in(1)) ^ gmul11(io.data_in(2)) ^ gmul13(io.data_in(3))
+    io.data_out(2) := gmul13(io.data_in(0)) ^ gmul9(io.data_in(1)) ^ gmul14(io.data_in(2)) ^ gmul11(io.data_in(3))
+    io.data_out(3) := gmul11(io.data_in(0)) ^ gmul13(io.data_in(1)) ^ gmul9(io.data_in(2)) ^ gmul14(io.data_in(3))
+  }
 }
 
-class MixColumn64(enc: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(UInt(64.W))
-    val out = Output(UInt(64.W))
-  })
-
-  io.out := VecInit(io.in.asBools.grouped(32).map(VecInit(_).asUInt).map({
-    x => {
-      val m = Module(new MixColumn32(enc))
-      m.io.in := x
-      m.io.out
-    }
-  }).toSeq).asUInt
-}
-
+//Column Mixing provides the primary obfuscation in AES
 class MixColumn128(enc: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(UInt(128.W))
-    val out = Output(UInt(128.W))
-  })
+  val io = IO(new DataBundle())
 
-  io.out := VecInit(io.in.asBools.grouped(16).map(VecInit(_).asUInt).map({
-    x => {
-      val m = Module(new MixColumn8(enc))
-      m.io.in := x
-      m.io.out
-    }
-  }).toSeq).asUInt
+  val d_in = io.data_in.asTypeOf(Vec(4, Vec(4, UInt(8.W))))
+  val d_out = Wire(Vec(4, Vec(4, UInt(8.W))))
+  io.data_out := d_out.asTypeOf(Vec(16, UInt(8.W)))
+
+  val MM0 = Module(new MixColumnsMM(enc))
+  val MM1 = Module(new MixColumnsMM(enc))
+  val MM2 = Module(new MixColumnsMM(enc))
+  val MM3 = Module(new MixColumnsMM(enc))
+
+  MM0.io.data_in := d_in(0)
+  d_out(0) := MM0.io.data_out
+
+  MM1.io.data_in := d_in(1)
+  d_out(1) := MM1.io.data_out
+
+  MM2.io.data_in := d_in(2)
+  d_out(2) := MM2.io.data_out
+
+  MM3.io.data_in := d_in(3)
+  d_out(3) := MM3.io.data_out
 }
