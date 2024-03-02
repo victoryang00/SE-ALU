@@ -2,6 +2,8 @@ package sealu.aes
 
 import chisel3.util._
 import chisel3._
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
 // refer to https://github.com/chipsalliance/rocket-chip/blob/38728ef3e57ee226caf444d95fd745935b639c4d/src/main/scala/zk/zkn.scala#L28
 object AES {
@@ -44,6 +46,63 @@ object AES {
   )
 
   val rcon: Seq[Int] = Seq(0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36)
+}
+
+abstract class CryptoAlgorithm(protected var key: Array[Byte]) {
+  protected var debug = true // Assuming there's a debug flag
+
+  @throws[Exception]
+  def encrypt(message: Array[Byte]): Array[Byte]
+
+  @throws[Exception]
+  def decrypt(message: Array[Byte]): Array[Byte]
+}
+
+class AES_ECB(key: Array[Byte]) extends CryptoAlgorithm(key) {
+  @throws[Exception]
+  override def encrypt(message: Array[Byte]): Array[Byte] = {
+    val cipher = Cipher.getInstance("AES/ECB/NOPADDING")
+    cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"))
+    cipher.doFinal(message)
+  }
+
+  @throws[Exception]
+  override def decrypt(messageBytes: Array[Byte]): Array[Byte] = {
+    val cipher = Cipher.getInstance("AES/ECB/NOPADDING")
+    cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"))
+    cipher.doFinal(messageBytes)
+  }
+}
+
+object AESUtils {
+  def convert(s: String): BigInt = {
+    var post = ""
+    for (i <- 0 until 16) {
+      post = s.slice(2 * i, 2 * i + 2).concat(post)
+    }
+    BigInt(post, 16)
+  }
+
+  def pad(key: BigInt): Array[Byte] = {
+    val targetLengthBytes = 16
+    // Convert BigInt to byte array of a specific length, filled with leading zeros if necessary
+    val keyBytes = {
+      val byteArray = key.toByteArray
+      val padded = Array.fill[Byte](targetLengthBytes)(0) // Start with an array filled with zeros
+      System.arraycopy(byteArray, 0, padded, targetLengthBytes - byteArray.length, byteArray.length) // Copy the BigInt bytes
+      padded
+    }
+    keyBytes
+  }
+
+  def hexStringToByteArray(s: String): Array[Byte] = {
+    val paddedHexString = s.padTo(32, '0').sliding(2, 2).toArray
+    paddedHexString.map(hexPair => Integer.parseInt(hexPair, 16).toByte)
+  }
+
+  def byteArrayToHexString(bytes: Array[Byte]): String = {
+    bytes.map(byte => f"$byte%02x").mkString
+  }
 }
 
 //Calculates the entire schedule

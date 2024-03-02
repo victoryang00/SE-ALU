@@ -10,25 +10,26 @@ import chisel3.util.random._
 trait Instruction;
 
 case class SEALUParams() {
-  val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f)
-  val init_plain: Seq[Int] = Seq(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f)
+  val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f, 0x00000010, 0x00000011, 0x00000012, 0x00000013, 0x00000014, 0x00000015, 0x00000016, 0x00000017, 0x00000018, 0x00000019, 0x0000001a, 0x0000001b, 0x0000001c, 0x0000001d, 0x0000001e, 0x0000001f)
+  val init_plain: Seq[BigInt] = Seq(0x1000, 0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007, 0x1008, 0x1009, 0x100a, 0x100b, 0x100c, 0x100d, 0x100e, 0x100f, 0x1010, 0x1011, 0x1012, 0x1013, 0x1014, 0x1015, 0x1016, 0x1017, 0x1018, 0x1019, 0x101a, 0x101b, 0x101c, 0x101d, 0x101e, 0x101f)
+  val key: String = "000102030405060708090a0b0c0d0e0f"
   val count: Int = 100
 }
 
-class SEALUIO() extends Bundle {
+class SEALUIO extends Bundle {
   val in = new Bundle {
     val inst_data = Input(UInt(6.W))
     val input1_data = Input(UInt(128.W))
     val input2_data = Input(UInt(128.W))
     val inputcond_data = Input(UInt(128.W))
-    val cache_valid = Input(Vec(128, Bool()))
+    val cache_valid = Input(Vec(32, Bool()))
+    val change_key = Input(Bool())
+    val new_key = Input(UInt(128.W))
     val valid = Input(Bool())
   }
   val output = new Bundle {
     val result = Output(UInt(128.W))
     val valid = Output(Bool())
-    val output_cache_data =SyncReadMem(128, UInt(128.W))
-    val output_cache_valid = Output(Vec(128, Bool()))
     val counter = Output(UInt(8.W))
   }
 }
@@ -44,12 +45,14 @@ class SEALU(p: SEALUParams) extends Module {
   dycrypt.io.input1 := 0.U
   dycrypt.io.input2 := 0.U
   dycrypt.io.cond := 0.U
+  dycrypt.io.key := 0.U
   dycrypt.io.valid := false.B
   encrypt.io.input := 0.U
+  encrypt.io.key := 0.U
   encrypt.io.valid := false.B
   io.output.result := 0.U
 
-  when(io.in.valid(counter.value)) { // Only proceed if the current cycle's input is valid
+  when(io.in.valid) { // Only proceed if the current cycle's input is valid
     // Accessing cycle-specific data using the counter
     val inst = io.in.inst_data
     val input1 = io.in.input1_data
@@ -75,6 +78,7 @@ class SEALU(p: SEALUParams) extends Module {
     dycrypt.io.input1 := input1
     dycrypt.io.input2 := input2
     dycrypt.io.cond := inputCond
+    dycrypt.io.key := AESUtils.convert(p.key).U
     dycrypt.io.valid := io.in.valid && cond_found && op1_found && op2_found
 
     sealuop.io.valid := io.in.valid && cond_found && op1_found && op2_found
@@ -88,7 +92,7 @@ class SEALU(p: SEALUParams) extends Module {
     printf("cond:%x\n", sealuop.io.cond)
     printf("inst:%b\n", sealuop.io.inst)
     // Read from custom memory based on input addresses
-    when (!dycrypt.io.ready) {
+    when(dycrypt.io.ready) {
       printf("waiting for dycrypt\n")
       // AES encryption
       // Example operation and storing the result back to memory
@@ -99,8 +103,9 @@ class SEALU(p: SEALUParams) extends Module {
 
       encrypt.io.input := padded_result
       encrypt.io.valid := true.B
+      encrypt.io.key := AESUtils.convert(p.key).U
       io.output.result := encrypt.io.output
-      when(!encrypt.io.ready) {
+      when(encrypt.io.ready) {
         printf("waiting for encrypt\n")
       }
       counter.inc() // Increment the counter each cycle to move to the next set of inputs
@@ -117,6 +122,4 @@ class SEALU(p: SEALUParams) extends Module {
   }
   io.output.valid := true.B
   io.output.counter := counter.value
-  io.output.output_cache_data.write(counter.value, io.output.result)
-  io.output.output_cache_valid := io.in.cache_valid
 }

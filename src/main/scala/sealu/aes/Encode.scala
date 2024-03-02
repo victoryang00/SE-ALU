@@ -13,15 +13,15 @@ class Encode extends Module {
   })
   io.output := 0.U
   // instantiate the AES
-  val aes_invcypher = Module(new AESCore)
-  aes_invcypher.io.input := io.input
-  aes_invcypher.io.valid := io.valid
-  aes_invcypher.io.key := io.key.asTypeOf(Vec(16, UInt(8.W)))
+  val aes_cypher = Module(new AESCore)
+  aes_cypher.io.input := io.input
+  aes_cypher.io.valid := io.valid
+  aes_cypher.io.key := io.key.asTypeOf(Vec(16, UInt(8.W)))
   val key_gen = Module(new KeySchedule)
   key_gen.io.key_in := io.key.asTypeOf(Vec(16, UInt(8.W)))
-  aes_invcypher.io. key_schedule := key_gen.io.key_schedule
-  aes_invcypher.io.key_valid := true.B
-  aes_invcypher.io.is_enc := false.B
-  io.ready := aes_invcypher.io.ready
-  io.output := aes_invcypher.io.output
+  aes_cypher.io. key_schedule := key_gen.io.key_schedule
+  aes_cypher.io.key_valid := true.B
+  aes_cypher.io.is_enc := true.B
+  io.ready := aes_cypher.io.ready
+  io.output := aes_cypher.io.output
 }
