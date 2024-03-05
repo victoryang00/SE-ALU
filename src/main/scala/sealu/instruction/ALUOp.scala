@@ -22,7 +22,11 @@ class ALU(ops: Map[BitPat, ALUOp]) extends Module {
   })
   io.out.bits := 0.U
   io.out.valid := false.B
-
+  for ((instruction, op) <- ops) {
+    when(io.inArgs.fire && io.instruction === instruction) {
+      io.out := op(io.inArgs)
+    }
+  }
 }
 
 object ALU {
