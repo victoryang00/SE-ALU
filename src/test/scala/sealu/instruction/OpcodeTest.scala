@@ -14,6 +14,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.inArgs.bits.condition.poke(0.U)
       dut.io.instruction.poke(0.U)
       dut.io.inArgs.valid.poke(1.U)
+      dut.clock.step()
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.expect(1.U)
     }
@@ -26,6 +27,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.inArgs.bits.condition.poke(0.U)
       dut.io.instruction.poke("b010000".U)
       dut.io.inArgs.valid.poke(true.B)
+      dut.clock.step()
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.expect(1.U)
     }
@@ -38,6 +40,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
       dut.io.inArgs.bits.condition.poke(0.U)
       dut.io.instruction.poke("b010000".U)
       dut.io.inArgs.valid.poke(true.B)
+      dut.clock.step()
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.expect(1.U)
     }

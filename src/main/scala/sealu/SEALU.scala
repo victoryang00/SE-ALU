@@ -23,6 +23,7 @@ class SEALUIO extends Bundle {
     val input2_data = Input(UInt(128.W))
     val inputcond_data = Input(UInt(128.W))
     // using param.key for now
+    val check = Input(Bool())
     //    val change_key = Input(Bool())
     //    val new_key = Input(UInt(128.W))
     val valid = Input(Bool())
@@ -84,10 +85,14 @@ class SEALU(p: SEALUParams) extends Module {
       // Example operation and storing the result back to memory
       // This is where you would perform your encryption/decryption and store the result
       // Assuming we get a result that we want to store in memory
-      val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
-      val padded_result = Cat(sealuop.io.out.bits, bit64_randnum)
+      when (io.in.check) {
+        val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
+        val padded_result = Cat(sealuop.io.out.bits, bit64_randnum)
 
-      encrypt.io.input := padded_result
+        encrypt.io.input := padded_result
+      }.otherwise {
+        encrypt.io.input := sealuop.io.out.bits
+      }
       encrypt.io.valid := true.B
       encrypt.io.key := BigInt(p.key).U
       io.output.result := encrypt.io.output
