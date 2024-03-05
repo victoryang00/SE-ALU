@@ -20,17 +20,14 @@ class ALU(ops: Map[BitPat, ALUOp]) extends Module {
     val instruction = Input(UInt())
     val out = Output(Valid(UInt(64.W)))
   })
+  io.out.bits := 0.U
+  io.out.valid := false.B
 
-  for ((instruction, op) <- ops) {
-    when(io.inArgs.fire && io.instruction === instruction) {
-      io.out := op(io.inArgs)
-    }
-  }
 }
 
 object ALU {
   def doFunc(opInputArgs: Valid[OpInputArgs], op: OpInputArgs => UInt): Valid[UInt] = {
-    val res = Valid(UInt(64.W))
+    val res = Wire(Valid(UInt(64.W)))
     res.bits := 0.U
     res.valid := false.B
     when(opInputArgs.fire) {
