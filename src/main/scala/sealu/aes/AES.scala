@@ -1,4 +1,4 @@
-package sealu.aes
+package aes
 
 import chisel3.util._
 import chisel3._

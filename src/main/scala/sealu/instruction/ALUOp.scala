@@ -1,4 +1,4 @@
-package sealu.instruction
+package instruction
 
 import chisel3._
 import chisel3.util._
@@ -18,7 +18,7 @@ class ALU(ops: Map[BitPat, ALUOp]) extends Module {
   val io = IO(new Bundle {
     val inArgs = Input(Valid(new OpInputArgs))
     val instruction = Input(UInt())
-    val out = Output(UInt(64.W))
+    val out = Output(Valid(UInt(64.W)))
   })
 
   for ((instruction, op) <- ops) {

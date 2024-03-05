@@ -1,4 +1,4 @@
-package sealu.aes
+package aes
 
 import chisel3._
 // decrypt the data
