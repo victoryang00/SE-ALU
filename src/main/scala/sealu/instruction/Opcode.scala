@@ -32,7 +32,9 @@ class Opcode extends Module {
     val valid: Bool = Input(Bool())
 
     val output: UInt = Output(UInt(64.W))
+    val ready: Bool = Output(Bool())
   })
+  io.ready := true.B // Cuz single-cycle
   private val data = io.inst(3, 0)
   private val op = io.inst(5, 4)
 

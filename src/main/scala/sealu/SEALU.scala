@@ -22,9 +22,9 @@ class SEALUIO extends Bundle {
     val input1_data = Input(UInt(128.W))
     val input2_data = Input(UInt(128.W))
     val inputcond_data = Input(UInt(128.W))
-    val cache_valid = Input(Vec(32, Bool()))
-    val change_key = Input(Bool())
-    val new_key = Input(UInt(128.W))
+    // using param.key for now
+    //    val change_key = Input(Bool())
+    //    val new_key = Input(UInt(128.W))
     val valid = Input(Bool())
   }
   val output = new Bundle {
@@ -36,9 +36,6 @@ class SEALUIO extends Bundle {
 
 class SEALU(p: SEALUParams) extends Module {
   val io: SEALUIO = IO(new SEALUIO())
-  val counter = new Counter(p.count) // 10 instructions
-  val ciphers = VecInit(p.init_cipher.map(_.U(128.W)))
-  val plaintexts = VecInit(p.init_plain.map(_.U(64.W)))
   val dycrypt = Module(new Decode())
   val encrypt = Module(new Encode())
 
@@ -62,29 +59,19 @@ class SEALU(p: SEALUParams) extends Module {
     // Assume sealuop can perform operations based on inst, and inputs
     val sealuop = Module(new Opcode()) // Define Opcode module with appropriate IO
     val cond_found = Wire(Bool())
-    val op1_found = ciphers.contains(input1)
-    val op2_found = ciphers.contains(input2)
     sealuop.io.inst := inst
-    if (sealuop.io.inst == Instruction.CMOV) {
-      cond_found := ciphers.contains(inputCond)
-    } else {
-      cond_found := true.B
-    }
-    val op1_idx = ciphers.indexWhere(ele => (ele === input1))
-    val op2_idx = ciphers.indexWhere(ele => (ele === input2))
-    val cond_idx = ciphers.indexWhere(ele => (ele === inputCond))
     // AES dycryption takes 3 cycles, so we need to wait for the result?
     // big number operation
     dycrypt.io.input1 := input1
     dycrypt.io.input2 := input2
     dycrypt.io.cond := inputCond
     dycrypt.io.key := AESUtils.convert(p.key).U
-    dycrypt.io.valid := io.in.valid && cond_found && op1_found && op2_found
+    dycrypt.io.valid := io.in.valid
 
-    sealuop.io.valid := io.in.valid && cond_found && op1_found && op2_found
-    sealuop.io.input_1 := plaintexts(op1_idx)
-    sealuop.io.input_2 := plaintexts(op2_idx)
-    sealuop.io.cond := plaintexts(cond_idx)
+    sealuop.io.valid := dycrypt.io.ready
+    sealuop.io.input_1 := dycrypt.io.output_input1
+    sealuop.io.input_2 := dycrypt.io.output_input2
+    sealuop.io.cond := dycrypt.io.output_cond
 
     printf("\n")
     printf("op1:%x\n", sealuop.io.input_1)
@@ -92,8 +79,8 @@ class SEALU(p: SEALUParams) extends Module {
     printf("cond:%x\n", sealuop.io.cond)
     printf("inst:%b\n", sealuop.io.inst)
     // Read from custom memory based on input addresses
-    when(dycrypt.io.ready) {
-      printf("waiting for dycrypt\n")
+    when(sealuop.io.ready) {
+      //      printf("waiting for dycrypt\n")
       // AES encryption
       // Example operation and storing the result back to memory
       // This is where you would perform your encryption/decryption and store the result
@@ -105,21 +92,12 @@ class SEALU(p: SEALUParams) extends Module {
       encrypt.io.valid := true.B
       encrypt.io.key := AESUtils.convert(p.key).U
       io.output.result := encrypt.io.output
-      when(encrypt.io.ready) {
-        printf("waiting for encrypt\n")
-      }
-      counter.inc() // Increment the counter each cycle to move to the next set of inputs
+      io.output.valid := encrypt.io.ready
     }
   }
 
 
-  when(reset.asBool) {
-    counter.reset()
-  }.otherwise {
-    when(counter.value === p.count.U - 1.U) {
-      printf("\n-----back----\n")
-    }
-  }
-  io.output.valid := true.B
-  io.output.counter := counter.value
+  //  when(reset.asBool) {
+  //    printf("\n\nRESET SE ALU...\n\n")
+  //  }
 }
