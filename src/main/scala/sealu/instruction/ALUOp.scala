@@ -17,7 +17,7 @@ trait ALUOp {
 class ALU(ops: Map[BitPat, ALUOp]) extends Module {
   val io = IO(new Bundle {
     val inArgs = Input(Valid(new OpInputArgs))
-    val instruction = Input(UInt())
+    val instruction = Input(UInt(64.W))
     val out = Output(Valid(UInt(64.W)))
   })
   io.out.bits := 0.U

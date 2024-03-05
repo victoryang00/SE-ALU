@@ -1,4 +1,3 @@
-
 import chisel3._
 import chisel3.util._
 import aes._
@@ -6,13 +5,15 @@ import chisel3.DontCare.:=
 import instruction._
 import chisel3.util.random._
 
-trait Instruction;
-
 case class SEALUParams() {
-  val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f, 0x00000010, 0x00000011, 0x00000012, 0x00000013, 0x00000014, 0x00000015, 0x00000016, 0x00000017, 0x00000018, 0x00000019, 0x0000001a, 0x0000001b, 0x0000001c, 0x0000001d, 0x0000001e, 0x0000001f)
-  val init_plain: Seq[BigInt] = Seq(0x1000, 0x0001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007, 0x1008, 0x1009, 0x100a, 0x100b, 0x100c, 0x100d, 0x100e, 0x100f, 0x1010, 0x1011, 0x1012, 0x1013, 0x1014, 0x1015, 0x1016, 0x1017, 0x1018, 0x1019, 0x101a, 0x101b, 0x101c, 0x101d, 0x101e, 0x101f)
-  val key: String = "000102030405060708090a0b0c0d0e0f"
-  val count: Int = 100
+  val key = BigInt("2b7e151628aed2a6abf7158809cf4f3c", 16).toByteArray
+  val keyUInt = BigInt("2b7e151628aed2a6abf7158809cf4f3c", 16).U(128.W)
+  val pt1 = BigInt("30c81c46a35ce411", 16)
+  val ct1 = BigInt("43b1cd7f598ece23881b00e3ed030688", 16)
+  val pt2 = BigInt("ae2d8a571e03ac9c", 16)
+  val ct2 = BigInt("f5d3d58503b9699de785895a96fdbaaf", 16)
+  //  val init_cipher: Seq[BigInt] = Seq(0x00000000, 0x00000001, 0x00000002, 0x00000003, 0x00000004, 0x00000005, 0x00000006, 0x00000007, 0x00000008, 0x00000009, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d, 0x0000000e, 0x0000000f, 0x00000010, 0x00000011, 0x00000012, 0x00000013, 0x00000014, 0x00000015, 0x00000016, 0x00000017, 0x00000018, 0x00000019, 0x0000001a, 0x0000001b, 0x0000001c, 0x0000001d, 0x0000001e, 0x0000001f)
+  //  val init_plain: Seq[BigInt] = Seq(0x1000, 0x0001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007, 0x1008, 0x1009, 0x100a, 0x100b, 0x100c, 0x100d, 0x100e, 0x100f, 0x1010, 0x1011, 0x1012, 0x1013, 0x1014, 0x1015, 0x1016, 0x1017, 0x1018, 0x1019, 0x101a, 0x101b, 0x101c, 0x101d, 0x101e, 0x101f)
 }
 
 class SEALUIO extends Bundle {
@@ -63,7 +64,7 @@ class SEALU(p: SEALUParams) extends Module {
     dycrypt.io.input1 := input1
     dycrypt.io.input2 := input2
     dycrypt.io.cond := inputCond
-    dycrypt.io.key := AESUtils.convert(p.key).U
+    dycrypt.io.key := BigInt(p.key).U(128.W)
     dycrypt.io.valid := io.in.valid
 
     sealuop.io.inArgs.valid := dycrypt.io.ready
@@ -88,7 +89,7 @@ class SEALU(p: SEALUParams) extends Module {
 
       encrypt.io.input := padded_result
       encrypt.io.valid := true.B
-      encrypt.io.key := AESUtils.convert(p.key).U
+      encrypt.io.key := BigInt(p.key).U
       io.output.result := encrypt.io.output
       io.output.valid := encrypt.io.ready
     }
