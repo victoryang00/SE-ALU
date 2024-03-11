@@ -7,14 +7,15 @@ import chiseltest._
 object TestValues {
   val key = BigInt("010102030405060708090a0b0c0d0e0f", 16).toByteArray
   val ptexts = Seq(
-    BigInt("0f0e0d0c0b0a09080706050403020100", 16).toByteArray.takeRight(16),
-    BigInt("07060504030201000f0e0d0c0b0a0908", 16).toByteArray.takeRight(16),
-    BigInt("03020100070605040b0a09080f0e0d0c", 16).toByteArray.takeRight(16),
+    "0f0e0d0c0b0a09080706050403020100",
+    "07060504030201000f0e0d0c0b0a0908",
+    "03020100070605040b0a09080f0e0d0c",
   )
   val ctexts = Seq(
-    BigInt("77fa25b0879ce4c394aafc20ac4b39cb", 16).toByteArray.takeRight(16),
-    BigInt("d0a545aed00983332224a415ab54ef7b", 16).toByteArray.takeRight(16),
-    BigInt("ea3390b8c4afd58f95aa2cf5fce1cf7f", 16).toByteArray.takeRight(16),
+    "77fa25b0879ce4c394aafc20ac4b39cb",
+
+    "d0a545aed00983332224a415ab54ef7b",
+    "ea3390b8c4afd58f95aa2cf5fce1cf7f",
   )
 }
 
@@ -24,16 +25,17 @@ class AESModelTest extends AnyFlatSpec with ChiselScalatestTester {
 
   it should "encrypt correctly" in {
     for (i <- TestValues.ptexts.indices) {
-      //      println(TestValues.ctexts(i).map("%02X" format _).mkString)
-      //      val c = model.encrypt(TestValues.ptexts(i))
-      //      println(c.map("%02X" format _).mkString)
-      assert(model.encrypt(TestValues.ptexts(i)) sameElements TestValues.ctexts(i))
+      val c = model.encrypt(BigInt(TestValues.ptexts(i), 16).toByteArray.takeRight(16))
+      val s = c.map("%02x" format _).mkString
+      assert(s equals TestValues.ctexts(i))
     }
   }
 
   it should "decrypt correctly" in {
     for (i <- TestValues.ctexts.indices) {
-      assert(model.decrypt(TestValues.ctexts(i)) sameElements TestValues.ptexts(i))
+      val p = model.decrypt(BigInt(TestValues.ctexts(i), 16).toByteArray.takeRight(16))
+      val s = p.map("%02x" format _).mkString
+      assert(s equals TestValues.ptexts(i))
     }
   }
 }
@@ -49,17 +51,17 @@ class AESTest extends AnyFlatSpec with ChiselScalatestTester {
     doTest(isEnc = false, TestValues.ctexts, TestValues.ptexts)
   }
 
-  def doTest(isEnc: Boolean, inputs: Seq[Array[Byte]], outputs: Seq[Array[Byte]]): TestResult = {
+  def doTest(isEnc: Boolean, inputs: Seq[String], outputs: Seq[String]): TestResult = {
     test(new AESEncDec(isEnc)).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       for ((inp, out) <- inputs.zip(outputs)) {
-        dut.io.input.poke(BigInt(Array[Byte](0) ++ inp).U)
-        dut.io.key.poke(BigInt(Array[Byte](0) ++ TestValues.key).U)
+        dut.io.input.poke(("x" + inp).U)
+        dut.io.key.poke(BigInt(TestValues.key).U)
         dut.io.valid.poke(true.B)
 
         dut.clock.step(10)
 
         dut.io.ready.expect(true.B)
-        dut.io.output.expect(BigInt(Array[Byte](0) ++ out).U)
+        dut.io.output.expect(("x" + out).U)
       }
     }
   }
