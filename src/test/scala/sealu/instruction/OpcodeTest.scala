@@ -8,7 +8,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "Opcode"
 
   it should "be able 0+1=1" in {
-    test(ALU()) { dut =>
+    test(ALU()).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       dut.io.inArgs.bits.in1.poke(0.U)
       dut.io.inArgs.bits.in2.poke(1.U)
       dut.io.inArgs.bits.condition.poke(0.U)
@@ -21,7 +21,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "be able 1 cmov 1 2" in {
-    test(ALU()) { dut =>
+    test(ALU()).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       dut.io.inArgs.bits.in1.poke(0.U)
       dut.io.inArgs.bits.in2.poke(1.U)
       dut.io.inArgs.bits.condition.poke(0.U)
@@ -34,7 +34,7 @@ class OpcodeTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 
   it should "be able 1  1 2" in {
-    test(ALU()) { dut =>
+    test(ALU()).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       dut.io.inArgs.bits.in1.poke(0.U)
       dut.io.inArgs.bits.in2.poke(1.U)
       dut.io.inArgs.bits.condition.poke(0.U)
