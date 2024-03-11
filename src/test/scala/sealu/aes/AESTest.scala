@@ -4,58 +4,63 @@ import chisel3._
 import org.scalatest.flatspec.AnyFlatSpec
 import chiseltest._
 
-class AESTest extends AnyFlatSpec with ChiselScalatestTester {
-  behavior of "AES"
+object TestValues {
+  val key = BigInt("010102030405060708090a0b0c0d0e0f", 16).toByteArray
+  val ptexts = Seq(
+    BigInt("0f0e0d0c0b0a09080706050403020100", 16).toByteArray.takeRight(16),
+    BigInt("07060504030201000f0e0d0c0b0a0908", 16).toByteArray.takeRight(16),
+    BigInt("03020100070605040b0a09080f0e0d0c", 16).toByteArray.takeRight(16),
+  )
+  val ctexts = Seq(
+    BigInt("77fa25b0879ce4c394aafc20ac4b39cb", 16).toByteArray.takeRight(16),
+    BigInt("d0a545aed00983332224a415ab54ef7b", 16).toByteArray.takeRight(16),
+    BigInt("ea3390b8c4afd58f95aa2cf5fce1cf7f", 16).toByteArray.takeRight(16),
+  )
+}
 
-  it should "be decode correct" in {
-    test(new Decode()) { dut =>
-      //      val key=0.U(128.W)
-      //      val data ="he673f208fbc35dcdba27c63cec8144f3".U
-      //      val ref_out = "h5e7f53cec97c565a59926d963e763603".U
-      val key = AESUtils.convert("593847fb7c86cf74a3e54bd76988a510")
-      val keyBytes = AESUtils.pad(key)
-      val aes = new AES_ECB(keyBytes)
-      val data = "6584f7dbb46faa4ee051b044691e256d"
-      val ref_out = aes.decrypt(AESUtils.hexStringToByteArray(data))
+class AESModelTest extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "AESModel"
+  val model = new AES_ECB(TestValues.key)
 
-      println(f"${AESUtils.convert(AESUtils.byteArrayToHexString(keyBytes))}%x\n")
-      println(f"${AESUtils.convert(data)}%x\n")
-      print(f"${AESUtils.convert(AESUtils.byteArrayToHexString(ref_out))}%x\n")
-      dut.io.input1.poke(AESUtils.convert(data))
-      dut.io.input2.poke(AESUtils.convert(data))
-      dut.io.cond.poke(AESUtils.convert(data))
-      dut.io.key.poke(AESUtils.convert(AESUtils.byteArrayToHexString(keyBytes)))
-      dut.io.valid.poke(true.B)
-      for (_ <- 0 until 10) {
-        dut.clock.step()
-      }
-      dut.io.output_input1.expect(AESUtils.convert(AESUtils.byteArrayToHexString(ref_out)))
-      dut.io.output_input2.expect(AESUtils.convert(AESUtils.byteArrayToHexString(ref_out)))
-      dut.io.output_cond.expect(AESUtils.convert(AESUtils.byteArrayToHexString(ref_out)))
-      dut.io.ready.expect(true.B)
+  it should "encrypt correctly" in {
+    for (i <- TestValues.ptexts.indices) {
+      //      println(TestValues.ctexts(i).map("%02X" format _).mkString)
+      //      val c = model.encrypt(TestValues.ptexts(i))
+      //      println(c.map("%02X" format _).mkString)
+      assert(model.encrypt(TestValues.ptexts(i)) sameElements TestValues.ctexts(i))
     }
   }
 
-  it should "be encode correct" in {
-    test(new Encode()) { dut =>
-      val key = AESUtils.convert("0")
-      val keyBytes = AESUtils.pad(key)
-      val aes = new AES_ECB(keyBytes)
-      val data = "5e7f53cec97c565a59926d963e763603"
-      val ref_out = aes.encrypt(AESUtils.hexStringToByteArray(data))
+  it should "decrypt correctly" in {
+    for (i <- TestValues.ctexts.indices) {
+      assert(model.decrypt(TestValues.ctexts(i)) sameElements TestValues.ptexts(i))
+    }
+  }
+}
 
-      println(f"${AESUtils.convert(AESUtils.byteArrayToHexString(keyBytes))}%x\n")
-      println(f"${AESUtils.convert(data)}%x\n")
-      print(f"${AESUtils.convert(AESUtils.byteArrayToHexString(ref_out))}%x\n")
+class AESTest extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "AES"
 
-      dut.io.input.poke(AESUtils.convert(data))
-      dut.io.key.poke(AESUtils.convert(AESUtils.byteArrayToHexString(keyBytes)))
-      dut.io.valid.poke(true.B)
-      for (i <- 0 until 10) {
-        dut.clock.step()
+  it should "encrypt correctly" in {
+    doTest(isEnc = true, TestValues.ptexts, TestValues.ctexts)
+  }
+
+  it should "decrypt correctly" in {
+    doTest(isEnc = false, TestValues.ctexts, TestValues.ptexts)
+  }
+
+  def doTest(isEnc: Boolean, inputs: Seq[Array[Byte]], outputs: Seq[Array[Byte]]): TestResult = {
+    test(new AESEncDec(isEnc)).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
+      for ((inp, out) <- inputs.zip(outputs)) {
+        dut.io.input.poke(BigInt(Array[Byte](0) ++ inp).U)
+        dut.io.key.poke(BigInt(Array[Byte](0) ++ TestValues.key).U)
+        dut.io.valid.poke(true.B)
+
+        dut.clock.step(10)
+
+        dut.io.ready.expect(true.B)
+        dut.io.output.expect(BigInt(Array[Byte](0) ++ out).U)
       }
-      dut.io.output.expect(AESUtils.convert(AESUtils.byteArrayToHexString(ref_out)))
-      dut.io.ready.expect(true.B)
     }
   }
 
