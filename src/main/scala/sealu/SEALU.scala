@@ -36,17 +36,14 @@ class SEALUIO extends Bundle {
 
 class SEALU(p: SEALUParams) extends Module {
   val io: SEALUIO = IO(new SEALUIO())
-  val dycrypt = Module(new Decode())
-  val encrypt = Module(new Encode())
-
-  dycrypt.io.input1 := 0.U
-  dycrypt.io.input2 := 0.U
-  dycrypt.io.cond := 0.U
-  dycrypt.io.key := 0.U
-  dycrypt.io.valid := false.B
-  encrypt.io.input := 0.U
-  encrypt.io.key := 0.U
-  encrypt.io.valid := false.B
+  val dec = 0.until(3).map(_ => Module(new AESEncDec(isEnc = false)))
+  val enc = Module(new AESEncDec(isEnc = true))
+  dec.foreach(_.io.input := 0.U)
+  dec.foreach(_.io.key := 0.U)
+  dec.foreach(_.io.valid := false.B)
+  enc.io.input := 0.U
+  enc.io.key := 0.U
+  enc.io.valid := false.B
   io.output.valid := false.B
   io.output.result := 0.U
 
@@ -62,16 +59,17 @@ class SEALU(p: SEALUParams) extends Module {
     sealuop.io.instruction := inst
     // AES dycryption takes 3 cycles, so we need to wait for the result?
     // big number operation
-    dycrypt.io.input1 := input1
-    dycrypt.io.input2 := input2
-    dycrypt.io.cond := inputCond
-    dycrypt.io.key := BigInt(p.key).U(128.W)
-    dycrypt.io.valid := io.in.valid
+    dec.zip(Seq(input1, input2, inputCond)).foreach {
+      case (d, i) =>
+        d.io.input := i
+        d.io.key := BigInt(p.key).U(128.W)
+        d.io.valid := io.in.valid
+    }
 
-    sealuop.io.inArgs.valid := dycrypt.io.ready
-    sealuop.io.inArgs.bits.in1 := dycrypt.io.output_input1(127, 64)
-    sealuop.io.inArgs.bits.in2 := dycrypt.io.output_input2(127, 64)
-    sealuop.io.inArgs.bits.condition := dycrypt.io.output_cond(127, 64)
+    sealuop.io.inArgs.valid := dec.map(_.io.ready).reduce(_ | _)
+    sealuop.io.inArgs.bits.in1 := dec(0).io.output(127, 64)
+    sealuop.io.inArgs.bits.in2 := dec(1).io.output(127, 64)
+    sealuop.io.inArgs.bits.condition := dec(2).io.output(127, 64)
 
     printf("\n")
     printf("op1:%x\n", sealuop.io.inArgs.bits.in1)
@@ -85,18 +83,17 @@ class SEALU(p: SEALUParams) extends Module {
       // Example operation and storing the result back to memory
       // This is where you would perform your encryption/decryption and store the result
       // Assuming we get a result that we want to store in memory
-      when (io.in.check) {
+      when(io.in.check) {
         val bit64_randnum = PRNG(new MaxPeriodFibonacciLFSR(64, Some(scala.math.BigInt(64, scala.util.Random))))
         val padded_result = Cat(sealuop.io.out.bits, bit64_randnum)
-
-        encrypt.io.input := padded_result
+        enc.io.input := padded_result
       }.otherwise {
-        encrypt.io.input := sealuop.io.out.bits
+        enc.io.input := sealuop.io.out.bits
       }
-      encrypt.io.valid := true.B
-      encrypt.io.key := BigInt(p.key).U
-      io.output.result := encrypt.io.output
-      io.output.valid := encrypt.io.ready
+      enc.io.valid := true.B
+      enc.io.key := BigInt(p.key).U
+      io.output.result := enc.io.output
+      io.output.valid := enc.io.ready
     }
   }
 
