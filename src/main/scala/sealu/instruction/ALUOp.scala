@@ -53,14 +53,14 @@ object ALU {
   def mul(opInputArgs: Valid[OpInputArgs]) =
     doFunc(opInputArgs, args => args.in1 * args.in2)
 
-  def muls(opInputArgs: Valid[OpInputArgs]) =
-    doFunc(opInputArgs, args => (args.in1.asSInt * args.in2.asSInt).asUInt)
+  //  def muls(opInputArgs: Valid[OpInputArgs]) =
+  //    doFunc(opInputArgs, args => (args.in1.asSInt * args.in2.asSInt).asUInt)
 
   def lt(opInputArgs: Valid[OpInputArgs]) =
     doFunc(opInputArgs, args => args.in1 < args.in2)
 
-  def lts(opInputArgs: Valid[OpInputArgs]) =
-    doFunc(opInputArgs, args => (args.in1.asSInt < args.in2.asSInt).asUInt)
+  //  def lts(opInputArgs: Valid[OpInputArgs]) =
+  //    doFunc(opInputArgs, args => (args.in1.asSInt < args.in2.asSInt).asUInt)
 
   def xor(opInputArgs: Valid[OpInputArgs]) =
     doFunc(opInputArgs, args => args.in1 ^ args.in2)
@@ -80,9 +80,9 @@ object ALU {
     BitPat("b000000") -> add,
     BitPat("b000001") -> sub,
     BitPat("b000010") -> mul,
-    BitPat("b000011") -> muls,
+    //    BitPat("b000011") -> muls,
     BitPat("b000100") -> lt,
-    BitPat("b000101") -> lts,
+    //    BitPat("b000101") -> lts,
     BitPat("b000111") -> xor,
     BitPat("b001000") -> or,
     BitPat("b001001") -> and,

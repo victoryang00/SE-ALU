@@ -13,7 +13,6 @@ object TestValues {
   )
   val ctexts = Seq(
     "77fa25b0879ce4c394aafc20ac4b39cb",
-
     "d0a545aed00983332224a415ab54ef7b",
     "ea3390b8c4afd58f95aa2cf5fce1cf7f",
   )
