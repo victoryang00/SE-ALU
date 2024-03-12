@@ -1,6 +1,7 @@
 package aes
 
 import chisel3._
+import chisel3.util.Pipe
 // decrypt the data
 
 class AESEncDec(isEnc: Boolean) extends Module {
@@ -23,4 +24,10 @@ class AESEncDec(isEnc: Boolean) extends Module {
 
   io.output := aes_cypher.io.output
   io.ready := aes_cypher.io.ready
+}
+
+class MockEncDec(isEnc: Boolean) extends AESEncDec(isEnc) {
+  val outs = Pipe(io.valid, io.input, 10)
+  io.output := outs.bits
+  io.ready := outs.valid
 }

@@ -36,8 +36,8 @@ class SEALUIO extends Bundle {
 
 class SEALU(p: SEALUParams) extends Module {
   val io: SEALUIO = IO(new SEALUIO())
-  val dec = 0.until(3).map(_ => Module(new AESEncDec(isEnc = false)))
-  val enc = Module(new AESEncDec(isEnc = true))
+  val dec = 0.until(3).map(_ => Module(new MockEncDec(isEnc = false)))
+  val enc = Module(new MockEncDec(isEnc = true))
   dec.foreach(_.io.input := 0.U)
   dec.foreach(_.io.key := 0.U)
   dec.foreach(_.io.valid := false.B)

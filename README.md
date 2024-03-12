@@ -8,6 +8,7 @@ cycles. We assume an RNG, a key-exchange protocol, and an encryption protocol.
 Status:
 - [x] AES model and tests working
 - [ ] AES module working
+- [x] AES Mock (to assume working)
 - [x] ALU pipleine basic tests
 - [x] ALU module assuming a working AES module
 - [ ] ALU tests assuming a working AES module
