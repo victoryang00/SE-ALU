@@ -7,6 +7,11 @@ import chiseltest._
 class ALUOpTest extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "Opcode"
 
+  val defaultRange = 0.to(16)
+  val defaultSRange = (-defaultRange.max).to(defaultRange.max)
+  val emptyRange = Seq(0)
+
+
   it should "add" in {
     doTest(0, (x, y, _) => x + y)
   }
@@ -51,11 +56,8 @@ class ALUOpTest extends AnyFlatSpec with ChiselScalatestTester {
       doTest(inst, (x, y, z) => if (z != 0) x else y, zRange = defaultRange))
   }
 
-  val defaultRange = 0.to(16)
-  val defaultSRange = (-defaultRange.max).to(defaultRange.max)
-  val emptyRange = Seq(0)
-
-  def toHex(v: Long) = ("x" + BigInt(v).toByteArray.map("%02x" format _).mkString)
+  def toHex(v: Long): String =
+    "x" + BigInt(v).toByteArray.map("%02x" format _).mkString
 
   def doTest(inst: Int,
              result: (Int, Int, Int) => Int,
